@@ -4,6 +4,6 @@ Public GitHub Pages site for the projective DQMC timing report on the Honeycomb 
 
 - Site: <https://wangfh5.github.io/honeycomb-dqmc-benchmark/>
 - After thermalization: <https://wangfh5.github.io/honeycomb-dqmc-benchmark/equilibrated.html>
-- Paper: F. Wang, R.-Z. Sun, Y.-Y. He, and X. Y. Xu, *Resolving Quantum Criticality in the Honeycomb Hubbard Model*, [arXiv:2602.03656](https://arxiv.org/abs/2602.03656)
+- Paper: Fo-Hong Wang, Fanjie Sun, Cheng-Hao He, and Xiao Yan Xu, *Resolving Quantum Criticality in the Honeycomb Hubbard Model*, [arXiv:2602.03656](https://arxiv.org/abs/2602.03656)
 
 This repository only hosts the generated HTML. The simulation code and raw run data stay in a separate private repository.
