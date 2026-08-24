@@ -10,13 +10,8 @@ This repository hosts the generated HTML and the publication-figure renderer. Th
 
 ## Publication figures
 
-`make_benchmark_figures.py` reads the same embedded `DATA` object as `index.html`, so the static paper figures and the interactive report use one normalized data source. Install its pinned dependencies from `requirements-benchmark-figures.txt`; the virtual environment remains outside this repository in the private benchmark workflow.
+`paper_figures/` contains the script that renders the static paper figures from the same embedded `DATA` as `index.html`, so the paper figures and the interactive report share one normalized data source.
 
-The five-argument CLI takes `index.html`, followed by the output paths for the stacked benchmark, wide benchmark, speedup/stage-share, and Delay-T comparison PDFs. The report publication workflow writes them directly to:
+Measured points use solid markers; non-measured points use open markers with dotted extensions.
 
-- `/home/wangfh5/Sync/papers/submatrixLRpaper/FigS-production-benchmark.pdf`
-- `/home/wangfh5/Sync/papers/submatrixLRpaper/rebuttal/decision1_reply/FigR-production-benchmark-wide.pdf`
-- `/home/wangfh5/Sync/papers/submatrixLRpaper/rebuttal/decision1_reply/FigR-speedup-stage-shares.pdf`
-- `/home/wangfh5/Sync/papers/submatrixLRpaper/rebuttal/decision1_reply/FigR-delayT-comparison.pdf`
-
-Measured points use solid markers. Points whose `kind` is not `measured` use open markers and dotted extensions and are listed in the generation log.
+Dependencies: `paper_figures/requirements-benchmark-figures.txt`.
