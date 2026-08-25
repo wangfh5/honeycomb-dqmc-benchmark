@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Render publication-style static figures from the production-regime DQMC benchmark report.
 
-Reads the embedded DATA JSON of the interactive report (pages/index.html of the
-honeycomb-dqmc-benchmark site) and produces:
+Reads the normalized DATA JSON of the interactive report and produces:
   1. FigS-production-benchmark.pdf      -- stacked mirrored version (manuscript column):
         (a) update time per sweep vs L for all five implementations;
         (b) total sweep time per sweep vs L for all five implementations, on the
@@ -19,19 +18,20 @@ honeycomb-dqmc-benchmark site) and produces:
         (b) direct time ratio, delay-T over submatrix-T, at both accounting levels.
 
 Points with kind != "measured" (extrapolated/estimated) are drawn with open markers and a
-dashed extension from the last measured point, and are reported in the log.
+dotted extension from the last measured point, and are reported in the log.
 
 Usage:
-  make_benchmark_figures.py <path-to-index.html> <out-stacked.pdf> <out-wide.pdf> <out-sharp.pdf> <out-delayt.pdf>
+  make_benchmark_figures.py <report-data.json> <out-stacked.pdf> <out-wide.pdf> <out-sharp.pdf> <out-delayt.pdf>
 """
 import json
-import re
 import sys
+from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import NullFormatter, NullLocator, ScalarFormatter
 import numpy as np
 
 # ---------------------------------------------------------------- style ----
@@ -48,6 +48,24 @@ plt.rcParams.update({
     "errorbar.capsize": 1.6,
     "savefig.bbox": "tight",
 })
+
+BENCHMARK_STYLE = {
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial", "Liberation Sans", "DejaVu Sans"],
+    "font.size": 9.0,
+    "axes.linewidth": 0.8,
+    "axes.labelsize": 9.5,
+    "xtick.labelsize": 8.0,
+    "ytick.labelsize": 8.0,
+    "xtick.direction": "in",
+    "ytick.direction": "in",
+    "xtick.top": True,
+    "ytick.right": True,
+    "legend.fontsize": 7.5,
+    "lines.linewidth": 1.15,
+    "lines.markersize": 4.2,
+    "errorbar.capsize": 2.0,
+}
 
 ALGO_LABEL = {"fast": "Fast", "delayg": "Delay-G", "subg": "Submatrix-G",
               "delaylr": "Delay-T", "sublr": "Submatrix-T"}
@@ -68,10 +86,8 @@ STAGE_TEXT_DARK = {"propagation", "other"}  # light fills take dark text
 L_TICKS = [6, 12, 24, 36, 48, 60, 72]
 
 
-def load_data(html_path):
-    text = open(html_path).read()
-    m = re.search(r"const DATA = (\{.*?\});\n", text, re.S)
-    return json.loads(m.group(1))
+def load_data(data_path):
+    return json.loads(Path(data_path).read_text())
 
 
 def series(data, algo, field):
@@ -118,10 +134,8 @@ def draw_extrapolated(ax, last_meas, extra, color, marker, ls=":"):
     if len(L) == 0:
         return
     if last_meas is not None:
-        L = np.concatenate([[last_meas[0]], L])
-        med = np.concatenate([[last_meas[1]], med])
-        lo = np.concatenate([[last_meas[2]], lo])
-        hi = np.concatenate([[last_meas[3]], hi])
+        ax.plot([last_meas[0], L[0]], [last_meas[1], med[0]], ls=ls,
+                color=color, marker=None, zorder=2)
     ax.errorbar(L, med, yerr=[med - lo, hi - med], fmt=ls + marker, color=color,
                 mfc="none", mec=color, markeredgewidth=0.8, elinewidth=0.6, zorder=2)
 
@@ -137,6 +151,27 @@ def setup_log_ax(ax, ylabel):
     ax.set_ylabel(ylabel)
 
 
+def disable_minor_ticks(ax):
+    for axis in (ax.xaxis, ax.yaxis):
+        axis.set_minor_locator(NullLocator())
+        axis.set_minor_formatter(NullFormatter())
+
+
+def setup_benchmark_log_ax(ax, data, ylabel):
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ticks = sorted({int(L) for L in data["l_values"]})
+    labels = [str(L) if index % 2 == 0 else "" for index, L in enumerate(ticks)]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(labels)
+    disable_minor_ticks(ax)
+    ax.set_xlim(min(ticks) * 0.9, max(ticks) * 1.08)
+    ax.set_xlabel(r"Linear system size $L$")
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(which="both", direction="in", top=True, right=True)
+
+
 def fast_cost_note(L, seconds):
     days = seconds / 86400.0
     if days >= 2:
@@ -146,39 +181,51 @@ def fast_cost_note(L, seconds):
 
 
 # ------------------------------------------- mirrored absolute-time panel ----
-def panel_abs_times(ax, data, field, ylabel, ylim, days_note=False):
+def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False):
     """Absolute times of all five implementations + inset speedup over fast."""
+    is_update = field == "update_seconds"
+    measured_style = "--" if is_update else "-"
+    measured_filled = not is_update
     for algo in ALGOS:
         meas, extra = series(data, algo, field)
         last = None
         if len(meas[0]):
-            draw_measured(ax, *meas, ALGO_COLOR[algo], ALGO_MARKER[algo], "-")
+            draw_measured(ax, *meas, ALGO_COLOR[algo], ALGO_MARKER[algo], measured_style,
+                          filled=measured_filled)
             last = meas[:, -1]
         draw_extrapolated(ax, last, extra, ALGO_COLOR[algo], ALGO_MARKER[algo])
-    setup_log_ax(ax, ylabel)
+    setup_benchmark_log_ax(ax, data, ylabel)
     ax.set_ylim(ylim)
 
     # inset: speedup of each delayed-update implementation over the fast update
-    axins = ax.inset_axes([0.10, 0.56, 0.38, 0.34])
+    bounds = ax.get_position()
+    axins = fig.add_axes([
+        bounds.x0 + 0.10 * bounds.width,
+        bounds.y0 + 0.56 * bounds.height,
+        0.38 * bounds.width,
+        0.34 * bounds.height,
+    ])
     axins.set_zorder(5)
     axins.patch.set_facecolor("white")
     for algo, curve in speedup_over_fast(data, field).items():
         axins.plot(curve[0], curve[1], "-" + ALGO_MARKER[algo],
-                   color=ALGO_COLOR[algo], ms=2.0, lw=0.7)
+                   color=ALGO_COLOR[algo], ms=3.0, lw=0.9)
     axins.set_yscale("log")
     axins.set_ylim(0.8, 400)
     axins.set_yticks([1, 10, 100])
-    axins.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    axins.yaxis.set_major_formatter(ScalarFormatter())
     axins.set_xlim(5, 70)
     axins.set_xticks([12, 36, 60])
-    axins.minorticks_off()
-    axins.tick_params(labelsize=5.0, length=1.5)
-    axins.set_title("speedup vs fast", fontsize=5.4, pad=1.5)
-    axins.set_xlabel(r"$L$", fontsize=5.4, labelpad=1.0)
+    disable_minor_ticks(axins)
+    axins.tick_params(which="both", direction="in", top=True, right=True,
+                      labelsize=6.2, length=2.0)
+    axins.set_xlabel(r"$L$", fontsize=6.5, labelpad=0.8)
+    axins.grid(True, alpha=0.3)
     for side in ("top", "right", "bottom", "left"):
-        axins.spines[side].set_linewidth(0.5)
+        axins.spines[side].set_linewidth(0.65)
 
-    handles = [Line2D([], [], color=ALGO_COLOR[a], marker=ALGO_MARKER[a], ls="-",
+    handles = [Line2D([], [], color=ALGO_COLOR[a], marker=ALGO_MARKER[a],
+                      mfc=ALGO_COLOR[a] if measured_filled else "none", ls=measured_style,
                       label=ALGO_LABEL[a]) for a in ALGOS]
     ax.legend(handles=handles, loc="lower right", frameon=False,
               handletextpad=0.4, borderaxespad=0.2, labelspacing=0.25)
@@ -208,19 +255,21 @@ def shared_ylim(data):
 
 
 def fig_benchmark_mirrored(data, out_path, orientation):
-    ylim = shared_ylim(data)
-    if orientation == "stacked":
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.4, 5.3))
-        fig.subplots_adjust(hspace=0.42)
-    else:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6.9, 2.9))
-        fig.subplots_adjust(wspace=0.30)
-    panel_abs_times(ax1, data, "update_seconds", "Update time per sweep (s)", ylim)
-    panel_abs_times(ax2, data, "sweep_seconds", "Total sweep time (s)", ylim,
-                    days_note=True)
-    for ax, tag in ((ax1, "(a)"), (ax2, "(b)")):
-        ax.set_title(tag, loc="left", fontsize=8, fontweight="bold", pad=3)
-    fig.savefig(out_path)
+    with plt.rc_context(BENCHMARK_STYLE):
+        ylim = shared_ylim(data)
+        if orientation == "stacked":
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.4, 5.3))
+            fig.subplots_adjust(hspace=0.42)
+        else:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6.9, 2.9))
+            fig.subplots_adjust(wspace=0.30)
+        panel_abs_times(fig, ax1, data, "update_seconds", "Update time per sweep (s)", ylim)
+        panel_abs_times(fig, ax2, data, "sweep_seconds", "Total sweep time (s)", ylim,
+                        days_note=True)
+        for ax, tag in ((ax1, "(a)"), (ax2, "(b)")):
+            ax.set_title(tag, loc="left", fontsize=10, fontweight="bold", pad=3)
+        fig.savefig(out_path)
+        plt.close(fig)
     print("wrote", out_path)
 
 
@@ -376,8 +425,8 @@ def fig_delayt_comparison(data, out_path):
 
 # -------------------------------------------------------------- drivers ----
 def main():
-    html_path, out_stacked, out_wide, out_sharp, out_delayt = sys.argv[1:6]
-    data = load_data(html_path)
+    data_path, out_stacked, out_wide, out_sharp, out_delayt = sys.argv[1:6]
+    data = load_data(data_path)
     print("report generated_at:", data["generated_at"])
     kinds = {(p["algorithm"], p["L"], p.get("kind", "measured"))
              for p in data["points"] if p.get("kind", "measured") != "measured"}

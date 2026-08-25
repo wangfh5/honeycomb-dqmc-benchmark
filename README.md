@@ -14,8 +14,8 @@ This repository hosts the generated HTML, normalized public data, and report/fig
 
 ## Publication figures
 
-`paper_figures/` contains the script that renders the static paper figures from the same embedded `DATA` as `index.html`, so the paper figures and the interactive report share one normalized data source.
+`paper_figures/` contains the script that renders the static paper figures from `data/report_data.json`, the same normalized payload embedded in `index.html`.
 
-Measured points use solid markers; non-measured points use open markers with dotted extensions.
+The stacked and wide layouts use Arial sans-serif, inward ticks on all sides, data-aligned logarithmic ticks, light grids, and untitled speedup insets; total-sweep curves are solid and filled, update-time curves are dashed and open, and non-measured points remain open with dotted extensions.
 
 Dependencies: `paper_figures/requirements-benchmark-figures.txt`.
