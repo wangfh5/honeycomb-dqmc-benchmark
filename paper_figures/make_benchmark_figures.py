@@ -32,6 +32,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter, NullLocator, ScalarFormatter
 import numpy as np
 
@@ -62,6 +63,9 @@ INSET_MARKER_SIZE = 6.0 * STYLE_SCALE
 LEGEND_SIZE = 18 * STYLE_SCALE
 INSET_FONT_SIZE = 16 * STYLE_SCALE
 WIDE_STYLE_SCALE = 0.9
+INSET_BOUNDS = (0.18, 0.70, 0.37, 0.27)
+INSET_BACKDROP_PAD = (0.13, 0.12, 0.01, 0.01)
+REPLY_FIGSIZE = (6.9, 5.8 * STYLE_SCALE)
 PANEL_LABEL_FONT = FontProperties(family="Arial", style="normal", weight="normal")
 
 plt.rcParams.update({
@@ -174,12 +178,12 @@ def style_axes(ax):
     ax.tick_params(which="both", direction="in", top=True, right=True)
 
 
-def label_panels(panels, visual_scale=1.0, inside=()):
+def label_panels(panels, visual_scale=1.0):
     font = PANEL_LABEL_FONT.copy()
     font.set_size(FONT_SIZE * visual_scale)
     for ax, tag in panels:
-        position = {"y": 0.94, "pad": 0} if ax in inside else {"pad": 3}
-        ax.set_title(tag, loc="left", fontproperties=font, **position)
+        ax.text(0, 1.02, tag, transform=ax.transAxes, ha="left", va="bottom",
+                clip_on=False, fontproperties=font)
 
 
 def label_every_decade(ax):
@@ -244,14 +248,26 @@ def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False,
 
     # inset: speedup of each delayed-update implementation over the fast update
     bounds = ax.get_position()
+    inset_x, inset_y, inset_width, inset_height = INSET_BOUNDS
     axins = fig.add_axes([
-        bounds.x0 + 0.11 * bounds.width,
-        bounds.y0 + 0.545 * bounds.height,
-        0.387 * bounds.width,
-        0.39 * bounds.height,
+        bounds.x0 + inset_x * bounds.width,
+        bounds.y0 + inset_y * bounds.height,
+        inset_width * bounds.width,
+        inset_height * bounds.height,
     ])
     axins.set_zorder(5)
     axins.patch.set_facecolor("white")
+    axins.patch.set_alpha(1.0)
+    inset_bounds = axins.get_position()
+    pad_left, pad_bottom, pad_right, pad_top = INSET_BACKDROP_PAD
+    fig.add_artist(Rectangle(
+        (inset_bounds.x0 - pad_left * bounds.width,
+         inset_bounds.y0 - pad_bottom * bounds.height),
+        inset_bounds.width + (pad_left + pad_right) * bounds.width,
+        inset_bounds.height + (pad_bottom + pad_top) * bounds.height,
+        transform=fig.transFigure, facecolor="white", edgecolor="none",
+        clip_on=False, zorder=4,
+    ))
     for algo, (measured, estimated) in speedup_over_fast(data, field).items():
         if measured.shape[1]:
             axins.plot(measured[0], measured[1], "-" + ALGO_MARKER[algo],
@@ -273,11 +289,11 @@ def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False,
     axins.set_yticks([1, 10, 100])
     axins.yaxis.set_major_formatter(ScalarFormatter())
     axins.set_xlim(4, 74)
-    axins.set_xticks(L_TICKS[::2])
-    axins.set_xlabel(r"$L$", fontsize=INSET_FONT_SIZE * visual_scale)
-    axins.set_ylabel("Speedup", fontsize=INSET_FONT_SIZE * visual_scale)
+    axins.set_xticks(L_TICKS[::4])
+    axins.set_xlabel(r"$L$", fontsize=INSET_FONT_SIZE * visual_scale, labelpad=1)
+    axins.set_ylabel("Speedup", fontsize=INSET_FONT_SIZE * visual_scale, labelpad=1)
     style_axes(axins)
-    axins.tick_params(which="both", labelsize=INSET_FONT_SIZE * visual_scale)
+    axins.tick_params(which="both", labelsize=INSET_FONT_SIZE * visual_scale, pad=1)
 
     handles = [Line2D([], [], color=ALGO_COLOR[a], marker=ALGO_MARKER[a],
                       mfc=ALGO_COLOR[a], ls="-", lw=LINE_WIDTH * visual_scale,
@@ -386,7 +402,7 @@ def draw_stage_shares(ax, data, sizes=(24, 36, 54, 60)):
 
 # ------------------------------------------------- argument figure (sharp) ----
 def fig_sharp(data, out_path):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6.9, 5.8 * STYLE_SCALE),
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=REPLY_FIGSIZE,
                                    gridspec_kw={"width_ratios": [1, 1.15]})
     fig.subplots_adjust(wspace=0.30)
 
@@ -419,7 +435,7 @@ def fig_sharp(data, out_path):
                lw=LINE_WIDTH, ms=MARKER_SIZE,
                label=rf"Update time ({r_update[-1]:.0f}× at $L$={int(L[-1])})"),
     ]
-    ax1.legend(handles=handles, loc="lower right", bbox_to_anchor=(1.0, 1.02),
+    ax1.legend(handles=handles, loc="lower right", bbox_to_anchor=(1.0, 1.10),
                fontsize=LEGEND_SIZE,
                handletextpad=0.4, borderaxespad=0.2, labelspacing=0.3)
     print(f"endpoint speedups at L={int(L[-1])}: update {r_update[-1]:.2f}x, "
@@ -428,7 +444,7 @@ def fig_sharp(data, out_path):
     # (b) stage-time shares
     draw_stage_shares(ax2, data)
 
-    label_panels(((ax1, "(a)"), (ax2, "(b)")), inside=(ax1,))
+    label_panels(((ax1, "(a)"), (ax2, "(b)")))
     fig.savefig(out_path)
     plt.close(fig)
     print("wrote", out_path)
@@ -437,9 +453,9 @@ def fig_sharp(data, out_path):
 # --------------------------------------------- delay-T comparison (U12) ----
 def fig_delayt_comparison(data, out_path):
     """Submatrix-T vs Delay-T in the production regime: absolute times and direct ratio."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6.9, 5.4 * STYLE_SCALE),
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=REPLY_FIGSIZE,
                                    gridspec_kw={"width_ratios": [1.2, 1]})
-    fig.subplots_adjust(wspace=0.32)
+    fig.subplots_adjust(left=0.09, right=0.98, bottom=0.20, top=0.78, wspace=0.32)
 
     # (a) absolute times at both accounting levels
     for algo in ("delaylr", "sublr"):
@@ -495,8 +511,8 @@ def fig_delayt_comparison(data, out_path):
     ax2.legend(loc="lower right", bbox_to_anchor=(1.0, 1.02), handletextpad=0.4,
                borderaxespad=0.2, labelspacing=0.3, fontsize=LEGEND_SIZE)
 
-    label_panels(((ax1, "(a)"), (ax2, "(b)")), inside=(ax2,))
-    fig.savefig(out_path)
+    label_panels(((ax1, "(a)"), (ax2, "(b)")))
+    fig.savefig(out_path, bbox_inches=fig.bbox_inches)
     plt.close(fig)
     print("wrote", out_path)
 
