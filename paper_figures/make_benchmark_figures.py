@@ -208,8 +208,10 @@ def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False):
     axins.set_zorder(5)
     axins.patch.set_facecolor("white")
     for algo, curve in speedup_over_fast(data, field).items():
-        axins.plot(curve[0], curve[1], "-" + ALGO_MARKER[algo],
-                   color=ALGO_COLOR[algo], ms=3.0, lw=0.9)
+        axins.plot(curve[0], curve[1], measured_style + ALGO_MARKER[algo],
+                   color=ALGO_COLOR[algo],
+                   mfc=ALGO_COLOR[algo] if measured_filled else "none",
+                   ms=3.0, lw=0.9)
     axins.set_yscale("log")
     axins.set_ylim(0.8, 400)
     axins.set_yticks([1, 10, 100])
