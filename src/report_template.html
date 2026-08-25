@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DQMC performance report: Honeycomb Hubbard model</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f4f1e9;
+      --surface: #fffdf8;
+      --ink: #20211f;
+      --muted: #656962;
+      --line: #d9d5ca;
+      --grid: #dedbd2;
+      --band-1: #e8f2fb;
+      --band-2: #fff1dc;
+      --band-3: #e8f5e9;
+      --band-4: #f0eafb;
+      --stage-update: #2878b5;
+      --stage-propagation: #ee9b2d;
+      --stage-stabilization: #8b67b5;
+      --stage-measurement: #2a9d78;
+      --stage-other: #a7aaa4;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--ink); }
+    main { width: min(1540px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 48px; }
+    h1, h2 { margin: 0; font-weight: 650; letter-spacing: -0.02em; }
+    h1 { font-size: clamp(26px, 3vw, 42px); }
+    h2 { font-size: clamp(18px, 2vw, 24px); }
+    p { margin: 0; }
+    .lead { margin-top: 10px; max-width: 980px; color: var(--muted); line-height: 1.65; }
+    .params { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 2px; }
+    .param { display: flex; flex-direction: column; gap: 2px; min-width: 7.2em; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+    .param-label { color: var(--muted); font-size: 11px; letter-spacing: 0.02em; }
+    .param-value { font-size: clamp(16px, 1.5vw, 20px); font-weight: 650; font-variant-numeric: tabular-nums; }
+    .state-banner { display: flex; align-items: center; gap: 10px 16px; margin-top: 12px; padding: 11px 14px; color: #174b3b; background: #e2f3eb; border: 1px solid #9dcfba; border-left: 5px solid #238467; border-radius: 10px; }
+    .state-banner[hidden] { display: none; }
+    .state-kicker { padding: 3px 7px; color: #fff; background: #238467; border-radius: 999px; font-size: 10px; font-weight: 750; letter-spacing: 0.08em; white-space: nowrap; }
+    .state-banner strong { font-size: 16px; white-space: nowrap; }
+    .state-banner span:last-child { color: #3c6257; font-size: 13px; line-height: 1.4; }
+    .meta { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .cite { margin-top: 10px; max-width: 1100px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .cite a, .repo-link a { color: #2a4d7a; }
+    .repo-link { margin-top: 5px; color: var(--muted); font-size: 13px; }
+    .lead-list, .note-list, .panel-copy ul, footer ul { margin: 6px 0 0; padding-left: 1.2em; }
+    .lead-list li, .note-list li, .panel-copy li, footer li { margin: 0.28em 0; }
+    .timing-note { margin-top: 12px; max-width: 1100px; padding: 10px 12px; color: #3f4a3e; background: #edf4e9; border: 1px solid #ceddc7; border-radius: 9px; font-size: 13px; line-height: 1.55; }
+    .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 16px 0 20px; }
+    .stat, .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+    .stat { min-width: 0; padding: 10px 12px; }
+    .stat-label { color: var(--muted); font-size: 12px; }
+    .stat-value { margin-top: 4px; font-size: clamp(18px, 1.8vw, 26px); font-weight: 650; font-variant-numeric: tabular-nums; }
+    .stat-note { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .stat-note span { display: block; }
+    .stat-note strong { color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+    .plots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .panel { min-width: 0; padding: 18px; }
+    .panel-wide { grid-column: 1 / -1; }
+    .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+    .panel-copy { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .panel-copy a { color: #2a4d7a; }
+    .panel-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .control { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+    select { min-height: 34px; padding: 5px 30px 5px 9px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+    .chart { width: 100%; min-height: 360px; }
+    .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px 16px; margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    label.legend-item { cursor: pointer; user-select: none; }
+    .legend-item input { margin: 0; }
+    .legend-item.is-off { opacity: 0.38; }
+    .legend-line { width: 22px; height: 3px; border-radius: 2px; }
+    .estimate-key { gap: 5px; margin-top: 6px; }
+    .estimate-symbol { width: 10px; height: 10px; background: var(--surface); border: 2px solid var(--muted); border-radius: 50%; }
+    .estimate-dash { width: 20px; border-top: 2px dashed var(--muted); }
+    .legend-box { width: 11px; height: 11px; border-radius: 2px; }
+    .legend-box.hatch { background-image: repeating-linear-gradient(-45deg, rgba(255,255,255,0.55) 0 2px, transparent 2px 4px); }
+    .empty-series { min-height: 320px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
+    .stage-detail { min-height: 42px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .stage-detail strong { color: var(--ink); font-weight: 650; }
+    .stage-value { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+    .tooltip { position: fixed; z-index: 20; min-width: 168px; max-width: 220px; padding: 8px 10px; pointer-events: none; opacity: 0; transform: translate(10px, 10px); color: #fff; background: rgba(25, 27, 25, 0.94); border-radius: 7px; font-size: 12px; line-height: 1.4; transition: opacity 80ms linear; }
+    .tooltip.visible { opacity: 1; }
+    .tooltip-list { margin: 5px 0 0; padding: 0; list-style: none; }
+    .tooltip-list li { display: flex; justify-content: space-between; gap: 10px; margin: 2px 0; font-variant-numeric: tabular-nums; }
+    .tooltip-list .sub { padding-left: 12px; color: rgba(255,255,255,0.78); }
+    footer { margin-top: 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    @media (max-width: 900px) {
+      .plots { grid-template-columns: 1fr; }
+      .panel-wide { grid-column: auto; }
+    }
+    @media (max-width: 650px) {
+      main { width: min(100% - 16px, 1540px); padding-top: 20px; }
+      .summary { gap: 6px; }
+      .stat { padding: 8px; }
+      .panel { padding: 12px 8px; border-radius: 10px; }
+      .panel-head { padding: 0 6px; flex-direction: column; gap: 8px; }
+      .state-banner { align-items: flex-start; flex-direction: column; gap: 6px; }
+      .state-banner strong { white-space: normal; }
+      .chart { min-height: 300px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1 id="report-title">DQMC performance report: Honeycomb Hubbard model</h1>
+      <aside class="state-banner" id="report-state" aria-label="Benchmark initial state" hidden>
+        <span class="state-kicker">INITIAL STATE</span>
+        <strong id="report-state-title"></strong>
+        <span id="report-state-copy"></span>
+      </aside>
+      <div class="params" id="report-params" aria-label="Simulation parameters"></div>
+      <p class="lead" id="report-lead">Timing comparison of auxiliary-field update algorithms for projector determinant quantum Monte Carlo (DQMC) on the honeycomb Hubbard model.</p>
+      <ul class="lead-list" id="report-lead-list">
+        <li>Delay-T, delay-G, submatrix-T, and submatrix-G are timed at their optimal delay-block size <i>n</i><sub>d</sub>.</li>
+        <li>Each delayed-update size has at least five independent fixed-seed runs. Fast update has one completed timing run through <i>L</i> = 60.</li>
+        <li>Filled symbols are measurements; error bars are the observed min–max across compute nodes.</li>
+        <li>Open symbols and dashed extensions show Fast update and sweep-time estimates at <i>L</i> = 66 and 72.</li>
+      </ul>
+      <p class="cite">The delayed-update algorithms follow Fo-Hong Wang, Fanjie Sun, Cheng-Hao He, and Xiao Yan Xu, <cite>Resolving Quantum Criticality in the Honeycomb Hubbard Model</cite>, <a href="https://arxiv.org/abs/2602.03656">arXiv:2602.03656</a>.</p>
+      <p class="repo-link">GitHub repository: <a href="https://github.com/wangfh5/honeycomb-dqmc-benchmark">wangfh5/honeycomb-dqmc-benchmark</a></p>
+      <p class="meta" id="generated-at"></p>
+      <div class="timing-note">
+        <strong>What is timed</strong>
+        <ul class="note-list">
+          <li>Sweep time is the cost of one Monte Carlo sweep of the space-time lattice.</li>
+          <li>Stage shares use the same sweep clock: auxiliary-field update, imaginary-time propagation, numerical stabilization, and measurement.</li>
+          <li>They exclude the one-time sweep-start setup where the numerical-stabilization matrices and the Green's function are initialized from a random auxiliary-field configuration and the trial wave function.</li>
+          <li>The program wall time also includes that initialization and final I/O.</li>
+        </ul>
+      </div>
+    </header>
+
+    <section class="summary" id="summary" aria-label="Summary"></section>
+
+    <section class="plots">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Update time vs size</h2>
+        </div>
+        <div class="chart" id="update-chart"></div>
+        <div class="panel-copy">
+          <ul>
+            <li>Cost of the auxiliary-field update within one sweep.</li>
+            <li>Symbols: median; bars: observed min–max.</li>
+            <li>Hover for sample count and optimal <i>n</i><sub>d</sub>.</li>
+            <li>Fast <i>L</i> = 66 and 72 are estimated by subtracting the same-size Submatrix-T median non-update time from the Fast sweep estimate.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Sweep time vs size</h2>
+        </div>
+        <div class="chart" id="sweep-chart"></div>
+        <div class="panel-copy">
+          <ul>
+            <li>Same runs as the update-time panel.</li>
+            <li>Includes update, propagation, stabilization, measurement, and remainder I/O inside the sweep.</li>
+            <li>Excludes that one-time sweep-start setup of the stabilization matrices and the Green's function.</li>
+            <li>Fast <i>L</i> = 66 completed, but its detailed TIMING output is unavailable; the plotted sweep time is inferred from the completed-job wall time.</li>
+            <li>Fast <i>L</i> = 72 is extrapolated from the stable per-slice sweep time observed over 15 days of runtime.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="panel panel-wide" id="speedup-panel">
+        <div class="panel-head">
+          <h2>Speedup relative to Submatrix-T</h2>
+          <label class="control" for="speedup-metric">Metric
+            <select id="speedup-metric">
+              <option value="update_seconds">Update time</option>
+              <option value="sweep_seconds">Total sweep time</option>
+            </select>
+          </label>
+        </div>
+        <div class="chart" id="speedup-chart"></div>
+        <div class="panel-copy" id="speedup-copy">
+          <ul>
+            <li>Vertical axis is comparator / submatrix-T.</li>
+            <li>Values above 1× mean submatrix-T is faster.</li>
+            <li>Fast <i>L</i> = 66 and 72 are estimates for both metrics and are drawn with open symbols and dashed extensions.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="panel panel-wide">
+        <div class="panel-head">
+          <h2>Optimal delay-block size <i>n</i><sub>d</sub> vs size</h2>
+        </div>
+        <div class="chart" id="nublock-chart"></div>
+        <div class="panel-copy">
+          <ul>
+            <li>Delay-block size <i>n</i><sub>d</sub> chosen by the lowest median sweep time.</li>
+            <li>Shown only for the four delayed-update algorithms.</li>
+            <li>Background colors mark the 1 / 4 / 16 / 32 OpenMP-thread resource bands.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="panel panel-wide" id="acceptance-panel" hidden>
+        <div class="panel-head">
+          <h2>Acceptance probability by initial state</h2>
+        </div>
+        <div class="chart" id="acceptance-chart"></div>
+        <div class="panel-copy" id="acceptance-copy"></div>
+      </article>
+
+      <article class="panel panel-wide" id="utilization-panel">
+        <div class="panel-head">
+          <h2>Hardware utilization</h2>
+          <label class="control" for="utilization-metric">Metric
+            <select id="utilization-metric">
+              <option value="cpu_percent">CPU</option>
+              <option value="memory_percent">Memory</option>
+            </select>
+          </label>
+        </div>
+        <div class="chart" id="utilization-chart"></div>
+        <div class="panel-copy" id="utilization-copy">
+          <ul>
+            <li>Delayed-update points: one scan winner plus four independent repeats at the optimal <i>n</i><sub>d</sub>.</li>
+            <li>Fast update: one completed timing run per size.</li>
+            <li>Centers are medians; bars are min–max. A single run has no error bar.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="panel panel-wide">
+        <div class="panel-head">
+          <h2>Stage time shares</h2>
+          <div class="panel-controls">
+            <label class="control" for="split-update">
+              <input id="split-update" type="checkbox">
+              Split update
+            </label>
+            <label class="control" for="stage-algorithm">Algorithm
+              <select id="stage-algorithm"></select>
+            </label>
+          </div>
+        </div>
+        <div class="chart" id="stage-chart"></div>
+        <div class="panel-copy">
+          <ul>
+            <li>Each bar is one sweep, normalized to 100%.</li>
+            <li>Turn on Split update to draw other operations versus update of <i>T</i> or <i>G</i>.</li>
+            <li>Hover a bar for the same breakdown.</li>
+          </ul>
+        </div>
+        <div class="stage-detail" id="stage-detail" aria-live="polite"></div>
+      </article>
+    </section>
+
+    <footer>
+      <ul class="note-list" id="report-footer">
+        <li>Error bars are the observed range over independent runs, not fit uncertainties.</li>
+        <li>CPU efficiency is DQMC process CPU time divided by allocated core-hours.</li>
+        <li>Memory efficiency is peak resident memory divided by allocated memory.</li>
+        <li>From <i>L</i> = 36 the allocation increases from 500 GiB to 1000 GiB, so the memory percentage also changes with the denominator.</li>
+        <li>For delayed updates, update time = other operations + update of <i>T</i> or <i>G</i>; both are drawn inside the update segment.</li>
+        <li>Fast update does not report that split.</li>
+      </ul>
+    </footer>
+  </main>
+  <div class="tooltip" id="tooltip" role="status"></div>
+
+  <script>
+    const DATA = __REPORT_DATA__;
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const STAGE_COLORS = {
+      update: "var(--stage-update)",
+      propagation: "var(--stage-propagation)",
+      stabilization: "var(--stage-stabilization)",
+      measurement: "var(--stage-measurement)",
+      other: "var(--stage-other)"
+    };
+    const tooltip = document.getElementById("tooltip");
+    const chartVisibility = {};
+    const baselineLabel = (DATA.algorithms.find(item => item.id === "sublr") || {label: "Submatrix-T"}).label;
+
+    function svgElement(name, attributes = {}, text = "") {
+      const element = document.createElementNS(SVG_NS, name);
+      for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+      if (text) element.textContent = text;
+      return element;
+    }
+
+    function formatSeconds(value) {
+      if (value < 0.01) return `${(value * 1000).toFixed(1)} ms`;
+      if (value < 1) return `${value.toFixed(3)} s`;
+      if (value < 100) return `${value.toFixed(2)} s`;
+      return `${value.toLocaleString("en-US", {maximumFractionDigits: 1})} s`;
+    }
+
+    function estimateTooltip(item, point, valueText, metric) {
+      const update = metric === "update_seconds";
+      const seconds = point[metric];
+      const detail = update
+        ? `<br>Non-update deduction ${formatSeconds(point.estimate.nonupdate_seconds)}`
+        : ` · ${point.estimate.total_slices} slices<br>${formatSeconds(point.estimate.seconds_per_slice)} / slice`;
+      const basis = update ? point.estimate.update_basis : point.estimate.basis;
+      return `<strong>${item.label} · estimate</strong><br>L=${point.L} · ${point.omp_threads} OpenMP threads<br>${valueText}<br>${(seconds / 86400).toFixed(seconds < 2e6 ? 3 : 2)} days${detail}<br>${basis}`;
+    }
+
+    function formatScalar(value) {
+      if (value >= 1000) return value.toLocaleString("en-US", {maximumFractionDigits: 0});
+      if (value >= 10) return value.toFixed(0);
+      if (value >= 1) return value.toFixed(value < 3 ? 1 : 0);
+      return value.toPrecision(1);
+    }
+
+    function logScale(value, domainMin, domainMax, rangeMin, rangeMax) {
+      const fraction = (Math.log(value) - Math.log(domainMin)) / (Math.log(domainMax) - Math.log(domainMin));
+      return rangeMin + fraction * (rangeMax - rangeMin);
+    }
+
+    function niceStep(span, target) {
+      if (!(span > 0) || !Number.isFinite(span)) return 1;
+      const raw = span / Math.max(1, target);
+      const magnitude = 10 ** Math.floor(Math.log10(raw));
+      const fraction = raw / magnitude;
+      return (fraction <= 1.5 ? 1 : fraction <= 3.5 ? 2 : fraction <= 7.5 ? 5 : 10) * magnitude;
+    }
+
+    function shrinkNiceStep(step) {
+      const exponent = Math.floor(Math.log10(step) + 1e-12);
+      const coefficient = Number((step / 10 ** exponent).toPrecision(6));
+      if (coefficient > 5) return 5 * 10 ** exponent;
+      if (coefficient > 2) return 2 * 10 ** exponent;
+      if (coefficient > 1) return 10 ** exponent;
+      return 5 * 10 ** (exponent - 1);
+    }
+
+    function minorDivisions(step) {
+      const coefficient = Number((step / 10 ** Math.floor(Math.log10(step) + 1e-12)).toPrecision(6));
+      return coefficient === 2 || coefficient === 10 ? 2 : 5;
+    }
+
+    function tickDecimals(step) {
+      if (!(step > 0) || !Number.isFinite(step)) return 0;
+      return Math.max(0, Math.ceil(-Math.log10(step) - 1e-12));
+    }
+
+    function rangeTicks(minimum, maximum, step, majorStep) {
+      const ticks = [];
+      const first = Math.ceil((minimum - step * 1e-9) / step);
+      const last = Math.floor((maximum + step * 1e-9) / step);
+      for (let index = first; index <= last && ticks.length < 80; index += 1) {
+        const value = Number((index * step).toPrecision(12));
+        if (value < minimum - step * 1e-9 || value > maximum + step * 1e-9) continue;
+        ticks.push({value, major: Math.abs(value / majorStep - Math.round(value / majorStep)) < 1e-6});
+      }
+      return ticks;
+    }
+
+    function linearAxisTicks(minimum, maximum) {
+      if (!(maximum > minimum)) return [{value: minimum, major: true}];
+      let majorStep = niceStep(maximum - minimum, 6);
+      let majors = rangeTicks(minimum, maximum, majorStep, majorStep);
+      while (majors.length < 5) {
+        const smaller = shrinkNiceStep(majorStep);
+        const next = rangeTicks(minimum, maximum, smaller, smaller);
+        if (next.length > 9) break;
+        majorStep = smaller;
+        majors = next;
+      }
+      return rangeTicks(minimum, maximum, majorStep / minorDivisions(majorStep), majorStep);
+    }
+
+    function logAxisTicks(minimum, maximum) {
+      if (!(minimum > 0) || !(maximum > minimum)) return [{value: Math.max(minimum, Number.MIN_VALUE), major: true}];
+      if (maximum / minimum < 12) return linearAxisTicks(minimum, maximum);
+      const ticks = [];
+      const startExp = Math.floor(Math.log10(minimum) + 1e-12);
+      const endExp = Math.ceil(Math.log10(maximum) - 1e-12);
+      const majorCoefficients = endExp - startExp >= 5 ? [1] : [1, 2, 5];
+      for (let exponent = startExp; exponent <= endExp; exponent += 1) {
+        const base = 10 ** exponent;
+        for (let coefficient = 1; coefficient <= 9; coefficient += 1) {
+          const value = coefficient * base;
+          if (value < minimum * (1 - 1e-12) || value > maximum * (1 + 1e-12)) continue;
+          ticks.push({value, major: majorCoefficients.includes(coefficient)});
+        }
+      }
+      return ticks.length ? ticks : [{value: minimum, major: true}];
+    }
+
+    function formatAxisTick(value, options, majorStep) {
+      if (options.ratio) return `${value.toFixed(Math.min(3, tickDecimals(majorStep)))}×`;
+      if (options.percent) return `${value.toFixed(options.compactPercent ? tickDecimals(majorStep) : 0)}%`;
+      return formatScalar(value);
+    }
+
+    function majorTickStep(ticks) {
+      const majors = ticks.filter(tick => tick.major).map(tick => tick.value);
+      return majors.length >= 2 ? Math.abs(majors[1] - majors[0]) : majors[0] || 1;
+    }
+
+    function showTooltip(event, html) {
+      tooltip.innerHTML = html;
+      tooltip.style.left = `${event.clientX}px`;
+      tooltip.style.top = `${event.clientY}px`;
+      tooltip.classList.add("visible");
+    }
+
+    function hideTooltip() {
+      tooltip.classList.remove("visible");
+    }
+
+    function seriesIsVisible(chartId, seriesId) {
+      const state = chartVisibility[chartId];
+      return !state || state[seriesId] !== false;
+    }
+
+    function ensureVisibility(chartId, series) {
+      if (!chartVisibility[chartId]) chartVisibility[chartId] = {};
+      for (const item of series) {
+        if (!(item.id in chartVisibility[chartId])) chartVisibility[chartId][item.id] = true;
+      }
+    }
+
+    function appendLegend(container, series, options = {}) {
+      const box = options.box === true;
+      const chartId = options.chartId;
+      const onChange = options.onChange;
+      const legend = document.createElement("div");
+      legend.className = "legend";
+      for (const item of series) {
+        const checked = !chartId || seriesIsVisible(chartId, item.id);
+        const swatch = document.createElement("span");
+        swatch.className = box ? "legend-box" : "legend-line";
+        if (item.hatch) swatch.classList.add("hatch");
+        swatch.style.backgroundColor = item.color;
+        if (chartId && onChange) {
+          const entry = document.createElement("label");
+          entry.className = checked ? "legend-item" : "legend-item is-off";
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = checked;
+          input.setAttribute("data-role", "series-toggle");
+          input.setAttribute("data-algorithm", item.id);
+          input.addEventListener("change", () => {
+            chartVisibility[chartId][item.id] = input.checked;
+            onChange();
+          });
+          entry.append(input, swatch, document.createTextNode(item.label));
+          legend.append(entry);
+        } else {
+          const entry = document.createElement("span");
+          entry.className = "legend-item";
+          entry.append(swatch, document.createTextNode(item.label));
+          legend.append(entry);
+        }
+      }
+      container.append(legend);
+    }
+
+    function appendEstimateKey(container, series, metric) {
+      if (!series.some(item => item.points.some(point => point.kind === "estimated"))) return;
+      const key = document.createElement("div");
+      key.className = "legend estimate-key";
+      key.setAttribute("data-role", "estimate-key");
+      const marker = document.createElement("span");
+      marker.className = "estimate-symbol";
+      const dash = document.createElement("span");
+      dash.className = "estimate-dash";
+      key.append(marker, dash, document.createTextNode(metric === "update_seconds" ? "Estimated update time" : "Estimated sweep time"));
+      container.append(key);
+    }
+
+    function appendOmpLabel(svg, center, top, width, threads, fontSize) {
+      const label = svgElement("text", {x: center, "text-anchor": "middle", fill: "var(--muted)", "font-size": fontSize});
+      if (width < 42) {
+        label.append(svgElement("tspan", {x: center, y: top + 12}, threads));
+        label.append(svgElement("tspan", {x: center, y: top + 24}, "OMP"));
+      } else {
+        label.setAttribute("y", top + 18);
+        label.textContent = `${threads} OMP`;
+      }
+      svg.append(label);
+    }
+
+    function drawOmpBands(svg, xScale, top, bottom, fontSize = 11) {
+      DATA.omp_bands.forEach((band, index) => {
+        const left = xScale(band.left);
+        const right = xScale(band.right);
+        svg.append(svgElement("rect", {x: left, y: top, width: right - left, height: bottom - top, fill: `var(--band-${index + 1})`}));
+        appendOmpLabel(svg, (left + right) / 2, top, right - left, band.threads, fontSize);
+        if (index > 0) svg.append(svgElement("line", {x1: left, x2: left, y1: top, y2: bottom, stroke: "var(--line)", "stroke-dasharray": "3 4"}));
+      });
+    }
+
+    function lineSeries(metric, allowZero = false) {
+      return DATA.algorithms.map(algorithm => ({
+        ...algorithm,
+        points: DATA.points.filter(point => point.algorithm === algorithm.id && (allowZero ? point[metric] >= 0 : point[metric] > 0)).map(point => ({
+          ...point,
+          value: point[metric],
+          low: point[`${metric}_min`] ?? point[metric],
+          high: point[`${metric}_max`] ?? point[metric]
+        }))
+      })).filter(series => series.points.length);
+    }
+
+    function utilizationSeries(metric) {
+      return DATA.algorithms.map(algorithm => ({
+        ...algorithm,
+        points: DATA.resource_efficiency.filter(point => point.algorithm === algorithm.id).map(point => ({
+          ...point,
+          value: point[metric],
+          low: point[`${metric}_min`],
+          high: point[`${metric}_max`]
+        }))
+      })).filter(series => series.points.length);
+    }
+
+    function distribution(values) {
+      const sorted = [...values].sort((left, right) => left - right);
+      const middle = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+      return {value: median, low: sorted[0], high: sorted.at(-1)};
+    }
+
+    function speedupSeries(metric) {
+      const sampleKey = metric.replace("_seconds", "");
+      const baseline = new Map(DATA.points.filter(point => point.algorithm === "sublr").map(point => [point.L, point]));
+      return DATA.algorithms.filter(algorithm => algorithm.id !== "sublr").map(algorithm => ({
+        ...algorithm,
+        label: `${algorithm.label} / ${baselineLabel}`,
+        points: DATA.points.filter(point => point.algorithm === algorithm.id && point[metric] > 0 && point.sample_values[sampleKey].length && baseline.has(point.L)).map(point => {
+          const reference = baseline.get(point.L);
+          const ratios = point.sample_values[sampleKey].flatMap(comparator => reference.sample_values[sampleKey].map(base => comparator / base));
+          return {...point, ...distribution(ratios)};
+        })
+      })).filter(series => series.points.length);
+    }
+
+    function drawLineChart(containerId, series, options) {
+      const container = document.getElementById(containerId);
+      container.replaceChildren();
+      ensureVisibility(containerId, series);
+      const active = series.filter(item => seriesIsVisible(containerId, item.id));
+      const redraw = () => drawLineChart(containerId, series, options);
+      if (!active.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-series";
+        empty.setAttribute("data-role", "empty-series");
+        empty.textContent = "No algorithm selected.";
+        container.append(empty);
+        appendLegend(container, series, {chartId: containerId, onChange: redraw});
+        return;
+      }
+      const width = Math.max(320, container.clientWidth || 900);
+      const height = width < 560 ? 330 : 390;
+      const margin = {top: 34, right: 18, bottom: 52, left: width < 500 ? 54 : 68};
+      const plot = {left: margin.left, right: width - margin.right, top: margin.top, bottom: height - margin.bottom};
+      const values = active.flatMap(item => item.points.flatMap(point => [point.low, point.value, point.high])).filter(value => options.percent ? value >= 0 : value > 0);
+      const percentPadding = options.compactPercent ? Math.max(1, 0.1 * (Math.max(...values) - Math.min(...values))) : 0;
+      let yMin = options.percent ? (options.compactPercent ? Math.max(0, Math.min(...values) - percentPadding) : 0) : 10 ** (Math.log10(Math.min(...values)) - 0.08);
+      let yMax = options.percent ? (options.compactPercent ? Math.min(100, Math.max(...values) + percentPadding) : 100) : 10 ** (Math.log10(Math.max(...values)) + 0.08);
+      if (yMax === yMin) {
+        yMin = Math.max(0, yMin - 1);
+        yMax = Math.min(100, yMax + 1);
+      }
+      if (options.reference === 1) {
+        yMin = Math.min(yMin, 0.9);
+        yMax = Math.max(yMax, 1.1);
+      }
+      const xMin = DATA.omp_bands[0].left;
+      const xMax = DATA.omp_bands[DATA.omp_bands.length - 1].right;
+      const x = value => logScale(value, xMin, xMax, plot.left, plot.right);
+      const y = value => options.percent
+        ? plot.bottom - (value - yMin) / (yMax - yMin) * (plot.bottom - plot.top)
+        : logScale(value, yMin, yMax, plot.bottom, plot.top);
+      const svg = svgElement("svg", {viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": options.ariaLabel, "data-ymin": yMin, "data-ymax": yMax});
+      drawOmpBands(svg, x, 4, plot.bottom, width < 500 ? 9 : 11);
+
+      const yTicks = options.percent
+        ? (options.compactPercent ? linearAxisTicks(yMin, yMax) : [0, 20, 40, 60, 80, 100].map(value => ({value, major: true})))
+        : logAxisTicks(yMin, yMax);
+      const majorStep = majorTickStep(yTicks);
+      svg.setAttribute("data-major-ticks", yTicks.filter(tick => tick.major).length);
+      svg.setAttribute("data-minor-ticks", yTicks.filter(tick => !tick.major).length);
+      for (const tick of yTicks) {
+        const position = y(tick.value);
+        svg.append(svgElement("line", {x1: plot.left, x2: plot.right, y1: position, y2: position, stroke: "var(--grid)", "stroke-width": tick.major ? 1 : 0.55, "stroke-opacity": tick.major ? 1 : 0.7, "data-role": tick.major ? "y-grid-major" : "y-grid-minor"}));
+        svg.append(svgElement("line", {x1: plot.left - (tick.major ? 5 : 3), x2: plot.left, y1: position, y2: position, stroke: "var(--muted)", "stroke-width": 1}));
+        if (!tick.major) continue;
+        svg.append(svgElement("text", {x: plot.left - 9, y: position + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11, "data-role": "y-tick-label", "data-tick-value": tick.value}, formatAxisTick(tick.value, options, majorStep)));
+      }
+
+      const tickStep = width < 470 ? 3 : width < 720 ? 2 : 1;
+      DATA.l_values.forEach((value, index) => {
+        if (index % tickStep !== 0 && index !== DATA.l_values.length - 1) return;
+        const position = x(value);
+        svg.append(svgElement("line", {x1: position, x2: position, y1: plot.bottom, y2: plot.bottom + 5, stroke: "var(--muted)"}));
+        svg.append(svgElement("text", {x: position, y: plot.bottom + 20, "text-anchor": "middle", fill: "var(--muted)", "font-size": 11}, value));
+      });
+
+      svg.append(svgElement("line", {x1: plot.left, x2: plot.right, y1: plot.bottom, y2: plot.bottom, stroke: "var(--muted)"}));
+      svg.append(svgElement("line", {x1: plot.left, x2: plot.left, y1: plot.top, y2: plot.bottom, stroke: "var(--muted)"}));
+      svg.append(svgElement("text", {x: (plot.left + plot.right) / 2, y: height - 9, "text-anchor": "middle", fill: "var(--ink)", "font-size": 12}, "Linear size L (log)"));
+      svg.append(svgElement("text", {x: 15, y: (plot.top + plot.bottom) / 2, transform: `rotate(-90 15 ${(plot.top + plot.bottom) / 2})`, "text-anchor": "middle", fill: "var(--ink)", "font-size": 12}, options.yLabel));
+
+      if (options.reference === 1) {
+        const referenceY = y(1);
+        svg.append(svgElement("line", {x1: plot.left, x2: plot.right, y1: referenceY, y2: referenceY, stroke: "var(--muted)", "stroke-dasharray": "5 4"}));
+      }
+
+      for (const item of active) {
+        const points = [...item.points].sort((left, right) => left.L - right.L);
+        const measured = points.filter(point => point.kind !== "estimated");
+        const estimates = points.filter(point => point.kind === "estimated");
+        const pathData = pathPoints => pathPoints.map((point, index) => `${index ? "L" : "M"}${x(point.L).toFixed(2)},${y(point.value).toFixed(2)}`).join(" ");
+        if (measured.length) {
+          svg.append(svgElement("path", {d: pathData(measured), fill: "none", stroke: item.color, "stroke-width": 2.2, "stroke-linejoin": "round", "stroke-linecap": "round", "data-role": "series-line"}));
+        }
+        if (estimates.length) {
+          const extension = measured.length ? [measured[measured.length - 1], ...estimates] : estimates;
+          svg.append(svgElement("path", {d: pathData(extension), fill: "none", stroke: item.color, "stroke-width": 2.2, "stroke-dasharray": "5 5", "stroke-linejoin": "round", "stroke-linecap": "round", "data-role": "estimate-line"}));
+        }
+        for (const point of points) {
+          if (point.high > point.low) {
+            const center = x(point.L);
+            const top = y(point.high);
+            const bottom = y(point.low);
+            svg.append(svgElement("line", {x1: center, x2: center, y1: top, y2: bottom, stroke: item.color, "stroke-width": 1.2, "data-role": "error-bar"}));
+            svg.append(svgElement("line", {x1: center - 4, x2: center + 4, y1: top, y2: top, stroke: item.color, "stroke-width": 1.2, "data-role": "error-bar"}));
+            svg.append(svgElement("line", {x1: center - 4, x2: center + 4, y1: bottom, y2: bottom, stroke: item.color, "stroke-width": 1.2, "data-role": "error-bar"}));
+          }
+          const estimated = point.kind === "estimated";
+          const circle = svgElement("circle", {cx: x(point.L), cy: y(point.value), r: 3.5, fill: estimated ? "var(--surface)" : item.color, stroke: estimated ? item.color : "var(--surface)", "stroke-width": estimated ? 2 : 1.4, "data-role": "data-point", "data-kind": point.kind || "measured"});
+          const valueText = options.ratio ? `${point.value.toFixed(2)}×` : options.nublock ? `${point.value}` : options.percent ? `${point.value.toFixed(1)}%` : formatSeconds(point.value);
+          const rangeText = options.ratio ? `${point.low.toFixed(2)}×–${point.high.toFixed(2)}×` : options.nublock ? `${point.low}–${point.high}` : options.percent ? `${point.low.toFixed(1)}%–${point.high.toFixed(1)}%` : `${formatSeconds(point.low)}–${formatSeconds(point.high)}`;
+          const nublockText = point.optimal_nublock ? `<br>n<sub>d</sub>=${point.optimal_nublock}` : "";
+          const estimateMetric = options.metric || "sweep_seconds";
+          const tooltipText = estimated
+            ? estimateTooltip(item, point, valueText, estimateMetric)
+            : `<strong>${item.label}</strong><br>L=${point.L} · ${point.omp_threads} OpenMP threads${nublockText}<br>Median ${valueText}<br>Observed range ${rangeText} · n=${point.sample_count}`;
+          circle.addEventListener("pointermove", event => showTooltip(event, tooltipText));
+          circle.addEventListener("pointerleave", hideTooltip);
+          circle.append(svgElement("title", {}, `${item.label}, L=${point.L}, ${valueText}${estimated ? " (estimated)" : ""}`));
+          svg.append(circle);
+        }
+      }
+      container.append(svg);
+      appendLegend(container, series, {chartId: containerId, onChange: redraw});
+      appendEstimateKey(container, active, options.metric);
+    }
+
+    function contiguousOmpGroups(points) {
+      const groups = [];
+      points.forEach((point, index) => {
+        const last = groups[groups.length - 1];
+        if (!last || last.threads !== point.omp_threads) groups.push({threads: point.omp_threads, start: index, end: index});
+        else last.end = index;
+      });
+      return groups;
+    }
+
+    function updateParts(point) {
+      const parts = point.update_parts;
+      if (!parts || !(parts.ratio >= 0) || !(parts.gfunc >= 0) || parts.ratio + parts.gfunc <= 0) return null;
+      return {ratio: parts.ratio, gfunc: parts.gfunc, ratioShare: parts.ratio / (parts.ratio + parts.gfunc)};
+    }
+
+    function updateMatrixSymbol(algorithmId) {
+      return algorithmId === "delayg" || algorithmId === "subg" ? "G" : "T";
+    }
+
+    function stageShare(point, seconds) {
+      return `${(100 * seconds / point.stage_total_seconds).toFixed(1)}% · ${formatSeconds(seconds)}`;
+    }
+
+    function renderStageDetail(point) {
+      const detail = document.getElementById("stage-detail");
+      const algorithm = DATA.algorithms.find(item => item.id === point.algorithm);
+      const parts = updateParts(point);
+      const values = DATA.stages.map(stage => {
+        const row = `<span class="stage-value"><span class="legend-box" style="background-color:${STAGE_COLORS[stage.id]}"></span>${stage.label} ${stageShare(point, point.stages[stage.id])}</span>`;
+        if (stage.id !== "update" || !parts) return row;
+        const matrix = updateMatrixSymbol(point.algorithm);
+        return `${row}<span class="stage-value" style="padding-left:14px">other ops ${stageShare(point, parts.ratio)}</span><span class="stage-value" style="padding-left:14px">update-${matrix} ${stageShare(point, parts.gfunc)}</span>`;
+      }).join("");
+      const nublock = point.optimal_nublock ? ` · n<sub>d</sub>=${point.optimal_nublock}` : "";
+      detail.innerHTML = `<strong>${algorithm.label} · L=${point.L} · ${point.omp_threads} OpenMP threads${nublock} · n=${point.sample_count} · sweep median ${formatSeconds(point.sweep_seconds)}</strong>${values}`;
+    }
+
+    function drawStageChart(algorithmId) {
+      const container = document.getElementById("stage-chart");
+      container.replaceChildren();
+      const points = DATA.points.filter(point => point.algorithm === algorithmId && point.stages).sort((left, right) => left.L - right.L);
+      const width = Math.max(320, container.clientWidth || 1200);
+      const height = width < 560 ? 380 : 440;
+      const splitUpdate = Boolean(document.getElementById("split-update")?.checked);
+      const margin = {top: 35, right: splitUpdate ? 28 : 16, bottom: 50, left: width < 500 ? 46 : 58};
+      const plot = {left: margin.left, right: width - margin.right, top: margin.top, bottom: height - margin.bottom};
+      const slot = (plot.right - plot.left) / points.length;
+      const barWidth = Math.min(44, slot * 0.7);
+      const y = percentage => plot.bottom - percentage / 100 * (plot.bottom - plot.top);
+      const svg = svgElement("svg", {viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": `${algorithmId} stage shares of sweep time`});
+      const defs = svgElement("defs");
+      const hatch = svgElement("pattern", {id: "update-gfunc-hatch", patternUnits: "userSpaceOnUse", width: 6, height: 6});
+      hatch.append(svgElement("rect", {width: 6, height: 6, fill: "var(--stage-update)"}));
+      hatch.append(svgElement("path", {d: "M-1,1 l2,-2 M0,6 l6,-6 M5,7 l2,-2", stroke: "#fff", "stroke-width": 1.1, "stroke-opacity": 0.55}));
+      defs.append(hatch);
+      svg.append(defs);
+
+      contiguousOmpGroups(points).forEach((group, index) => {
+        const left = plot.left + group.start * slot;
+        const right = plot.left + (group.end + 1) * slot;
+        svg.append(svgElement("rect", {x: left, y: 4, width: right - left, height: plot.bottom - 4, fill: `var(--band-${index + 1})`}));
+        appendOmpLabel(svg, (left + right) / 2, 4, right - left, group.threads, width < 500 ? 9 : 11);
+        if (index > 0) svg.append(svgElement("line", {x1: left, x2: left, y1: 4, y2: plot.bottom, stroke: "var(--line)", "stroke-dasharray": "3 4"}));
+      });
+
+      for (const percentage of [0, 25, 50, 75, 100]) {
+        const position = y(percentage);
+        svg.append(svgElement("line", {x1: plot.left, x2: plot.right, y1: position, y2: position, stroke: "var(--grid)"}));
+        svg.append(svgElement("text", {x: plot.left - 8, y: position + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11}, `${percentage}%`));
+      }
+
+      points.forEach((point, index) => {
+        const center = plot.left + (index + 0.5) * slot;
+        let cumulative = 0;
+        const group = svgElement("g");
+        const parts = updateParts(point);
+        const fontSize = width < 600 ? 9 : 10;
+        const appendShare = (segTop, segBottom, share, fill, part) => {
+          if (barWidth < 18 || segBottom - segTop < 12) return;
+          group.append(svgElement("text", {x: center, y: (segTop + segBottom) / 2 + 4, "text-anchor": "middle", fill, "font-size": fontSize, "font-weight": 650, "data-role": "stage-label", "data-L": point.L, "data-part": part}, `${share.toFixed(0)}%`));
+        };
+        for (const stage of DATA.stages) {
+          const percentage = 100 * point.stages[stage.id] / point.stage_total_seconds;
+          const top = y(cumulative + percentage);
+          const bottom = y(cumulative);
+          group.append(svgElement("rect", {x: center - barWidth / 2, y: top, width: barWidth, height: Math.max(0, bottom - top), fill: STAGE_COLORS[stage.id], stroke: "var(--surface)", "stroke-width": 0.6, "data-role": "stage-segment"}));
+          if (stage.id === "update" && parts && splitUpdate) {
+            const ratioPct = percentage * parts.ratioShare;
+            const split = y(cumulative + ratioPct);
+            group.append(svgElement("rect", {x: center - barWidth / 2, y: top, width: barWidth, height: Math.max(0, split - top), fill: "url(#update-gfunc-hatch)", "data-role": "update-gfunc"}));
+            group.append(svgElement("line", {x1: center - barWidth / 2, x2: center + barWidth / 2, y1: split, y2: split, stroke: "#fff", "stroke-width": 1.2, "stroke-dasharray": "3 2", "stroke-linecap": "round", "data-role": "update-split"}));
+            appendShare(split, bottom, ratioPct, "#fff", "update-ratio");
+            appendShare(top, split, percentage - ratioPct, "#fff", "update-gfunc");
+          } else {
+            appendShare(top, bottom, percentage, stage.id === "other" ? "var(--ink)" : "#fff", stage.id);
+          }
+          cumulative += percentage;
+        }
+        group.addEventListener("pointermove", event => {
+          renderStageDetail(point);
+          const rows = DATA.stages.flatMap(stage => {
+            const main = `<li><span>${stage.label}</span><span>${stageShare(point, point.stages[stage.id])}</span></li>`;
+            if (stage.id !== "update" || !parts) return [main];
+            const matrix = updateMatrixSymbol(point.algorithm);
+            return [
+              main,
+              `<li class="sub"><span>other ops</span><span>${stageShare(point, parts.ratio)}</span></li>`,
+              `<li class="sub"><span>update-${matrix}</span><span>${stageShare(point, parts.gfunc)}</span></li>`
+            ];
+          }).join("");
+          showTooltip(event, `<strong>L=${point.L} · ${point.omp_threads} threads</strong><ul class="tooltip-list">${rows}</ul>`);
+        });
+        group.addEventListener("pointerleave", hideTooltip);
+        svg.append(group);
+        svg.append(svgElement("text", {x: center, y: plot.bottom + 19, "text-anchor": "middle", fill: "var(--muted)", "font-size": slot < 33 ? 9 : 11}, point.L));
+      });
+
+      svg.append(svgElement("line", {x1: plot.left, x2: plot.right, y1: plot.bottom, y2: plot.bottom, stroke: "var(--muted)"}));
+      svg.append(svgElement("text", {x: (plot.left + plot.right) / 2, y: height - 8, "text-anchor": "middle", fill: "var(--ink)", "font-size": 12}, "Linear size L"));
+      container.append(svg);
+      const hasParts = splitUpdate && points.some(point => updateParts(point));
+      const legend = hasParts
+        ? [
+            {id: "update-ratio", label: "Update · other operations", color: STAGE_COLORS.update},
+            {id: "update-gfunc", label: `Update · ${updateMatrixSymbol(algorithmId)}`, color: STAGE_COLORS.update, hatch: true},
+            ...DATA.stages.filter(stage => stage.id !== "update").map(stage => ({...stage, color: STAGE_COLORS[stage.id]}))
+          ]
+        : DATA.stages.map(stage => ({...stage, color: STAGE_COLORS[stage.id]}));
+      appendLegend(container, legend, {box: true});
+      renderStageDetail(points[points.length - 1]);
+    }
+
+    function honeycombSites(L) {
+      return 2 * L * L;
+    }
+
+    function peakSpeedupAgainst(algorithmId, metric) {
+      const series = speedupSeries(metric).find(item => item.id === algorithmId);
+      if (!series || !series.points.length) return null;
+      return series.points.reduce((best, point) => point.value > best.value ? point : best, series.points[0]);
+    }
+
+    function formatGain(ratio) {
+      const percent = 100 * (ratio - 1);
+      return `${percent >= 10 ? percent.toFixed(0) : percent.toFixed(1)}%`;
+    }
+
+    function speedupSummaryCard(comparatorLabel, algorithmId, formatValue) {
+      const update = peakSpeedupAgainst(algorithmId, "update_seconds");
+      const sweep = peakSpeedupAgainst(algorithmId, "sweep_seconds");
+      const title = `Peak ${baselineLabel} vs ${comparatorLabel}`;
+      if (!update || !sweep) return [title, "—", `No ${comparatorLabel} timing points yet`];
+      const updateLabel = update.kind === "estimated" ? "Estimated update time" : "Update time";
+      const sweepLabel = sweep.kind === "estimated" ? "Estimated sweep time" : "Sweep time";
+      return [title, formatValue(update.value), `<span>${updateLabel} · L=${update.L}</span><span><strong>${formatValue(sweep.value)}</strong> ${sweepLabel} · L=${sweep.L}</span>`];
+    }
+
+    function renderSummary() {
+      const sizes = DATA.l_values;
+      const largest = sizes[sizes.length - 1];
+      const hardware = DATA.hardware || {};
+      const cards = [
+        ["Largest lattice", honeycombSites(largest).toLocaleString("en-US"), `${sizes.length} sizes · L = ${sizes[0]}–${largest}`],
+        speedupSummaryCard("Fast update", "fast", value => `${value.toFixed(1)}×`),
+        speedupSummaryCard("Delay-T", "delaylr", formatGain),
+        ["Compute node", `${hardware.cores || 64}c / ${hardware.memory_gib || 512} GB`, hardware.detail || "exclusive 64c512g nodes"]
+      ];
+      const summary = document.getElementById("summary");
+      cards.forEach(([label, value, note]) => {
+        const card = document.createElement("article");
+        card.className = "stat";
+        card.innerHTML = `<p class="stat-label">${label}</p><p class="stat-value">${value}</p><p class="stat-note">${note}</p>`;
+        summary.append(card);
+      });
+    }
+
+    function renderAll() {
+      drawLineChart("update-chart", lineSeries("update_seconds"), {ariaLabel: "Update time versus linear size on log-log axes", yLabel: "Update time / sweep (s)", metric: "update_seconds"});
+      drawLineChart("sweep-chart", lineSeries("sweep_seconds"), {ariaLabel: "Sweep time versus linear size on log-log axes", yLabel: "Sweep time (s)", metric: "sweep_seconds"});
+      drawSpeedupChart();
+      drawLineChart("nublock-chart", lineSeries("optimal_nublock"), {ariaLabel: "Optimal delay-block size versus linear size", yLabel: "Optimal n_d", nublock: true});
+      if (DATA.report_mode === "equilibrated") {
+        document.getElementById("acceptance-panel").hidden = false;
+        drawLineChart("acceptance-chart", DATA.acceptance_series, {ariaLabel: "Acceptance probability by initial state versus linear size", yLabel: "Acceptance probability (%)", percent: true, compactPercent: true});
+      }
+      if (DATA.resource_efficiency.length) drawUtilizationChart();
+      else document.getElementById("utilization-panel").hidden = true;
+      drawStageChart(document.getElementById("stage-algorithm").value);
+    }
+
+    function drawSpeedupChart() {
+      const metric = document.getElementById("speedup-metric").value;
+      drawLineChart("speedup-chart", speedupSeries(metric), {ariaLabel: `Speedup relative to ${baselineLabel} versus linear size`, yLabel: `Comparator / ${baselineLabel}`, ratio: true, reference: 1, metric});
+    }
+
+    function drawUtilizationChart() {
+      const metric = document.getElementById("utilization-metric").value;
+      const label = metric === "cpu_percent" ? "CPU efficiency" : "Memory efficiency";
+      drawLineChart("utilization-chart", utilizationSeries(metric), {ariaLabel: `${label} versus linear size`, yLabel: `${label} (%)`, percent: true, compactPercent: true});
+    }
+
+    if (DATA.report_title) {
+      document.getElementById("report-title").textContent = DATA.report_title;
+      document.title = DATA.report_title;
+    }
+    const initialState = DATA.report_mode === "equilibrated"
+      ? ["Production-equilibrated restart", "Every timing run starts from an auxiliary-field configuration equilibrated in the production campaign."]
+      : ["Random auxiliary-field configuration", "Every timing run measures the first sweep starting from a random auxiliary-field configuration."];
+    document.getElementById("report-state-title").textContent = initialState[0];
+    document.getElementById("report-state-copy").textContent = initialState[1];
+    document.getElementById("report-state").hidden = false;
+    if (DATA.report_mode === "equilibrated") {
+      const extra = document.createElement("li");
+      extra.textContent = "These runs restart from production-equilibrated auxiliary-field configurations.";
+      document.getElementById("report-lead-list").append(extra);
+      document.getElementById("speedup-copy").innerHTML = `<ul><li>Vertical axis is comparator / ${baselineLabel}.</li><li>Values above 1× mean ${baselineLabel} is faster.</li><li>Only the four delayed-update algorithms are compared on equilibrated restarts.</li></ul>`;
+      document.getElementById("utilization-copy").innerHTML = `<ul><li>Each size and algorithm uses five equilibrated restarts at the optimal <i>n</i><sub>d</sub>.</li><li>Centers are medians; bars are min–max.</li></ul>`;
+      const comparison = DATA.acceptance_comparison;
+      const related = DATA.related_report;
+      const signed = value => `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+      document.getElementById("acceptance-copy").innerHTML = `<ul><li>Each curve pools four delayed-update backends and at least five fixed-seed timing samples per backend (<i>n</i> ≥ 20 per <i>L</i>); backend values coincide at plotting precision.</li><li>The equilibrated restart has ${comparison.equilibrated_percent.toFixed(1)}% median acceptance, versus ${comparison.random_percent.toFixed(1)}% during the first sweep from a random auxiliary-field configuration, a difference of ${comparison.acceptance_delta_percentage_points.toFixed(1)} percentage points.</li><li>More accepted proposals increase delayed-update matrix work. Across ${comparison.matched_group_count} matched size/backend groups, the equilibrated medians are ${signed(comparison.update_time_change_percent)} for update time and ${signed(comparison.sweep_time_change_percent)} for sweep time. This is consistent with the modest timing increase, but does not isolate acceptance as its sole cause.</li><li>See the <a href="${related.href}">${related.label}</a> for the complete from-random timing results.</li></ul>`;
+    }
+    document.getElementById("generated-at").textContent = `Generated ${new Date(DATA.generated_at).toLocaleString("en-US")} · ${DATA.points.length} selected points`;
+    const physics = DATA.physics || {};
+    const betaText = String(physics.beta || "L+12").replace(/^L\+(\d+)$/, "<i>L</i> + $1");
+    const params = [
+      ["Model", physics.model || "Honeycomb Hubbard"],
+      ["<i>U</i> / <i>t</i>", physics.U != null ? Number(physics.U).toFixed(1) : "3.7"],
+      ["<i>β</i>", betaText],
+      ["Δ<i>τ</i>", physics.dtau != null ? Number(physics.dtau).toFixed(1) : "0.1"],
+      ["<i>n</i><sub>wrap</sub>", physics.nwrap != null ? String(physics.nwrap) : "10"],
+      ["Sweeps / bin", `${physics.nsweep ?? 1} / ${physics.nbin ?? 1}`]
+    ];
+    const paramBox = document.getElementById("report-params");
+    params.forEach(([label, value]) => {
+      const item = document.createElement("div");
+      item.className = "param";
+      item.innerHTML = `<span class="param-label">${label}</span><span class="param-value">${value}</span>`;
+      paramBox.append(item);
+    });
+    const stageSelect = document.getElementById("stage-algorithm");
+    for (const algorithm of DATA.algorithms.filter(item => DATA.points.some(point => point.algorithm === item.id))) {
+      const option = document.createElement("option");
+      option.value = algorithm.id;
+      option.textContent = algorithm.label;
+      option.selected = algorithm.id === "sublr";
+      stageSelect.append(option);
+    }
+    document.getElementById("speedup-metric").addEventListener("change", drawSpeedupChart);
+    if (DATA.resource_efficiency.length) document.getElementById("utilization-metric").addEventListener("change", drawUtilizationChart);
+    document.getElementById("split-update").addEventListener("change", () => drawStageChart(stageSelect.value));
+    stageSelect.addEventListener("change", () => drawStageChart(stageSelect.value));
+    renderSummary();
+    renderAll();
+    let resizeTimer;
+    window.addEventListener("resize", () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(renderAll, 120);
+    });
+  </script>
+</body>
+</html>
