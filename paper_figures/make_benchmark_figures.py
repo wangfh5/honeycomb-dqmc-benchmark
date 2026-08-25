@@ -89,7 +89,7 @@ STAGE_COLOR = {"update": "#0072B2", "propagation": "#E69F00",
 STAGE_TEXT_DARK = {"propagation", "other"}  # light fills take dark text
 
 BENCHMARK_L_TICKS = [6, 12, 24, 48, 72]
-INSET_L_TICKS = [6, 12, 24, 48]
+INSET_L_TICKS = [6, 12, 24, 48, 72]
 
 
 def load_data(data_path):
@@ -224,7 +224,7 @@ def setup_benchmark_log_ax(ax, ylabel, xlabel=r"$L$"):
 
 # ------------------------------------------- mirrored absolute-time panel ----
 def panel_abs_times(fig, ax, data, field, ylabel, ylim, visual_scale=1.0,
-                    show_legend=True, xlabel=r"$L$"):
+                    show_legend=True, legend_scale=1.0, xlabel=r"$L$"):
     """Absolute times of all five implementations + inset speedup over fast."""
     for algo in ALGOS:
         meas, extra = series(data, algo, field)
@@ -295,8 +295,13 @@ def panel_abs_times(fig, ax, data, field, ylabel, ylim, visual_scale=1.0,
                           mfc=ALGO_COLOR[a], ls="-", lw=LINE_WIDTH * visual_scale,
                           ms=MARKER_SIZE * visual_scale, label=ALGO_LABEL[a])
                    for a in ALGOS]
-        ax.legend(handles=handles, fontsize=LEGEND_SIZE * visual_scale,
-                  loc="lower right")
+        legend_options = {
+            "fontsize": LEGEND_SIZE * visual_scale * legend_scale,
+            "loc": "lower right",
+        }
+        if legend_scale < 1:
+            legend_options.update(bbox_to_anchor=(1.0, 0.0), borderaxespad=0.2)
+        ax.legend(handles=handles, **legend_options)
 
 
 def shared_ylim(data):
@@ -333,7 +338,8 @@ def fig_benchmark_mirrored(data, out_path, orientation):
                         show_legend=orientation != "stacked",
                         xlabel="" if orientation == "stacked" else r"$L$")
         panel_abs_times(fig, ax2, data, "sweep_seconds", "Total sweep time (s)",
-                        ylim, visual_scale=visual_scale)
+                        ylim, visual_scale=visual_scale,
+                        legend_scale=0.82 if orientation == "stacked" else 1.0)
         if orientation == "stacked":
             ax1.tick_params(axis="x", which="both", labelbottom=False)
         label_panels(((ax1, "(a)"), (ax2, "(b)")), visual_scale,
