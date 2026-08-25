@@ -88,7 +88,8 @@ STAGE_COLOR = {"update": "#0072B2", "propagation": "#E69F00",
                "other": "#999999"}
 STAGE_TEXT_DARK = {"propagation", "other"}  # light fills take dark text
 
-L_TICKS = list(range(6, 73, 6))
+BENCHMARK_L_TICKS = [6, 12, 24, 48, 72]
+INSET_L_TICKS = [6, 12, 24, 48]
 
 
 def load_data(data_path):
@@ -178,11 +179,11 @@ def style_axes(ax):
     ax.tick_params(which="both", direction="in", top=True, right=True)
 
 
-def label_panels(panels, visual_scale=1.0):
+def label_panels(panels, visual_scale=1.0, x=0, y=1.02, ha="left"):
     font = PANEL_LABEL_FONT.copy()
     font.set_size(FONT_SIZE * visual_scale)
     for ax, tag in panels:
-        ax.text(0, 1.02, tag, transform=ax.transAxes, ha="left", va="bottom",
+        ax.text(x, y, tag, transform=ax.transAxes, ha=ha, va="bottom",
                 clip_on=False, fontproperties=font)
 
 
@@ -208,31 +209,22 @@ def setup_log_ax(ax, ylabel):
     style_axes(ax)
 
 
-def setup_benchmark_log_ax(ax, ylabel):
-    ax.set_xscale("linear")
+def setup_benchmark_log_ax(ax, ylabel, xlabel=r"$L$"):
+    ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xticks(L_TICKS)
-    ax.set_xticklabels([str(L) for L in L_TICKS])
-    ax.xaxis.set_minor_locator(NullLocator())
+    ax.set_xticks(BENCHMARK_L_TICKS)
+    ax.get_xaxis().set_major_formatter(ScalarFormatter())
     ax.xaxis.set_minor_formatter(NullFormatter())
     label_every_decade(ax)
-    ax.set_xlim(4, 74)
-    ax.set_xlabel(r"Linear system size $L$")
+    ax.set_xlim(5, 80)
+    ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     style_axes(ax)
 
 
-def fast_cost_note(L, seconds):
-    days = seconds / 86400.0
-    if days >= 2:
-        return rf"fast, $L$={L}:" + "\n" + f"≈{days:.1f} days"
-    hours = seconds / 3600.0
-    return rf"fast, $L$={L}:" + "\n" + f"≈{hours:.0f} h"
-
-
 # ------------------------------------------- mirrored absolute-time panel ----
-def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False,
-                    visual_scale=1.0):
+def panel_abs_times(fig, ax, data, field, ylabel, ylim, visual_scale=1.0,
+                    show_legend=True, xlabel=r"$L$"):
     """Absolute times of all five implementations + inset speedup over fast."""
     for algo in ALGOS:
         meas, extra = series(data, algo, field)
@@ -243,7 +235,7 @@ def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False,
             last = meas[:, -1]
         draw_extrapolated(ax, last, extra, ALGO_COLOR[algo], ALGO_MARKER[algo],
                           visual_scale=visual_scale)
-    setup_benchmark_log_ax(ax, ylabel)
+    setup_benchmark_log_ax(ax, ylabel, xlabel)
     ax.set_ylim(ylim)
 
     # inset: speedup of each delayed-update implementation over the fast update
@@ -285,32 +277,26 @@ def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False,
                        lw=INSET_LINE_WIDTH * visual_scale,
                        ms=INSET_MARKER_SIZE * visual_scale)
     axins.set_yscale("log")
+    axins.set_xscale("log")
     axins.set_ylim(0.8, 600)
     axins.set_yticks([1, 10, 100])
     axins.yaxis.set_major_formatter(ScalarFormatter())
-    axins.set_xlim(4, 74)
-    axins.set_xticks(L_TICKS[::4])
+    axins.set_xlim(5, 80)
+    axins.set_xticks(INSET_L_TICKS)
+    axins.get_xaxis().set_major_formatter(ScalarFormatter())
+    axins.xaxis.set_minor_formatter(NullFormatter())
     axins.set_xlabel(r"$L$", fontsize=INSET_FONT_SIZE * visual_scale, labelpad=1)
     axins.set_ylabel("Speedup", fontsize=INSET_FONT_SIZE * visual_scale, labelpad=1)
     style_axes(axins)
     axins.tick_params(which="both", labelsize=INSET_FONT_SIZE * visual_scale, pad=1)
 
-    handles = [Line2D([], [], color=ALGO_COLOR[a], marker=ALGO_MARKER[a],
-                      mfc=ALGO_COLOR[a], ls="-", lw=LINE_WIDTH * visual_scale,
-                      ms=MARKER_SIZE * visual_scale, label=ALGO_LABEL[a]) for a in ALGOS]
-    ax.legend(handles=handles, fontsize=LEGEND_SIZE * visual_scale, loc="lower right")
-
-    if days_note:
-        meas, _ = series(data, "fast", "sweep_seconds")
-        L, med = meas[0], meas[1]
-        i = int(np.argmax(L))
-        ax.annotate(fast_cost_note(int(L[i]), med[i]),
-                    xy=(L[i] * 0.95, med[i] * 1.2), xytext=(43, 2.0e6),
-                    fontsize=15 * STYLE_SCALE * visual_scale, va="center", ha="left",
-                    arrowprops=dict(arrowstyle="-",
-                                    lw=0.8 * STYLE_SCALE * visual_scale,
-                                    color="0.35",
-                                    connectionstyle="arc3,rad=-0.1"), color="0.2")
+    if show_legend:
+        handles = [Line2D([], [], color=ALGO_COLOR[a], marker=ALGO_MARKER[a],
+                          mfc=ALGO_COLOR[a], ls="-", lw=LINE_WIDTH * visual_scale,
+                          ms=MARKER_SIZE * visual_scale, label=ALGO_LABEL[a])
+                   for a in ALGOS]
+        ax.legend(handles=handles, fontsize=LEGEND_SIZE * visual_scale,
+                  loc="lower right")
 
 
 def shared_ylim(data):
@@ -337,16 +323,21 @@ def fig_benchmark_mirrored(data, out_path, orientation):
         figsize = (6.9, 6 * STYLE_SCALE)
     with plt.rc_context(context):
         if orientation == "stacked":
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)
-            fig.subplots_adjust(hspace=0.42)
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize, sharex=True)
+            fig.subplots_adjust(hspace=0.08)
         else:
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
             fig.subplots_adjust(wspace=0.30)
         panel_abs_times(fig, ax1, data, "update_seconds", "Update time per sweep (s)",
+                        ylim, visual_scale=visual_scale,
+                        show_legend=orientation != "stacked",
+                        xlabel="" if orientation == "stacked" else r"$L$")
+        panel_abs_times(fig, ax2, data, "sweep_seconds", "Total sweep time (s)",
                         ylim, visual_scale=visual_scale)
-        panel_abs_times(fig, ax2, data, "sweep_seconds", "Total sweep time (s)", ylim,
-                        days_note=True, visual_scale=visual_scale)
-        label_panels(((ax1, "(a)"), (ax2, "(b)")), visual_scale)
+        if orientation == "stacked":
+            ax1.tick_params(axis="x", which="both", labelbottom=False)
+        label_panels(((ax1, "(a)"), (ax2, "(b)")), visual_scale,
+                     x=-0.015, y=1.01, ha="right")
         fig.savefig(out_path)
         plt.close(fig)
     print("wrote", out_path)
