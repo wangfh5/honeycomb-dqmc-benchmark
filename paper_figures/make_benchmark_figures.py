@@ -30,8 +30,9 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontProperties
 from matplotlib.lines import Line2D
-from matplotlib.ticker import FuncFormatter, NullFormatter, NullLocator, ScalarFormatter
+from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter, NullLocator, ScalarFormatter
 import numpy as np
 
 # ---------------------------------------------------------------- style ----
@@ -60,15 +61,11 @@ INSET_LINE_WIDTH = 0.8 * STYLE_SCALE
 INSET_MARKER_SIZE = 6.0 * STYLE_SCALE
 LEGEND_SIZE = 18 * STYLE_SCALE
 INSET_FONT_SIZE = 16 * STYLE_SCALE
+WIDE_STYLE_SCALE = 0.9
+PANEL_LABEL_FONT = FontProperties(family="Arial", style="normal", weight="normal")
 
 plt.rcParams.update({
     "font.size": FONT_SIZE,
-    "axes.linewidth": 0.8 * STYLE_SCALE,
-    "grid.linewidth": 0.8 * STYLE_SCALE,
-    "xtick.major.width": 0.8 * STYLE_SCALE,
-    "xtick.minor.width": 0.6 * STYLE_SCALE,
-    "ytick.major.width": 0.8 * STYLE_SCALE,
-    "ytick.minor.width": 0.6 * STYLE_SCALE,
 })
 
 ALGO_LABEL = {"fast": "Fast", "delayg": "Delay-G", "subg": "Submatrix-G",
@@ -136,25 +133,30 @@ def speedup_over_fast(data, field):
     return curves
 
 
-def draw_measured(ax, L, med, lo, hi, color, marker, ls, filled=True, zorder=3):
+def draw_measured(ax, L, med, lo, hi, color, marker, ls, filled=True, zorder=3,
+                  visual_scale=1.0):
     ax.errorbar(L, med, yerr=[med - lo, hi - med], fmt=ls + marker, color=color,
-                mfc=color if filled else "none", mec=color, markeredgewidth=STYLE_SCALE,
-                ms=MARKER_SIZE, lw=LINE_WIDTH, elinewidth=STYLE_SCALE,
-                capsize=2.5 * STYLE_SCALE,
+                mfc=color if filled else "none", mec=color,
+                markeredgewidth=STYLE_SCALE * visual_scale,
+                ms=MARKER_SIZE * visual_scale, lw=LINE_WIDTH * visual_scale,
+                elinewidth=STYLE_SCALE * visual_scale,
+                capsize=2.5 * STYLE_SCALE * visual_scale,
                 zorder=zorder)
 
 
-def draw_extrapolated(ax, last_meas, extra, color, marker, ls=":"):
+def draw_extrapolated(ax, last_meas, extra, color, marker, ls=":", visual_scale=1.0):
     """Extrapolated points: open markers, dotted link from the last measured point."""
     L, med, lo, hi = extra
     if len(L) == 0:
         return
     if last_meas is not None:
         ax.plot([last_meas[0], L[0]], [last_meas[1], med[0]], ls=ls,
-                color=color, marker=None, lw=LINE_WIDTH, zorder=2)
+                color=color, marker=None, lw=LINE_WIDTH * visual_scale, zorder=2)
     ax.errorbar(L, med, yerr=[med - lo, hi - med], fmt=ls + marker, color=color,
-                mfc="none", mec=color, markeredgewidth=STYLE_SCALE, ms=MARKER_SIZE,
-                lw=LINE_WIDTH, elinewidth=STYLE_SCALE, capsize=2.5 * STYLE_SCALE,
+                mfc="none", mec=color, markeredgewidth=STYLE_SCALE * visual_scale,
+                ms=MARKER_SIZE * visual_scale, lw=LINE_WIDTH * visual_scale,
+                elinewidth=STYLE_SCALE * visual_scale,
+                capsize=2.5 * STYLE_SCALE * visual_scale,
                 zorder=2)
 
 
@@ -168,8 +170,24 @@ def plain_log_tick(value, _position):
 
 
 def style_axes(ax):
-    ax.grid(True, alpha=0.3)
+    ax.grid(True, color="#b0b0b0", linewidth=0.8, alpha=0.3)
     ax.tick_params(which="both", direction="in", top=True, right=True)
+
+
+def label_panels(panels, visual_scale=1.0, inside=()):
+    font = PANEL_LABEL_FONT.copy()
+    font.set_size(FONT_SIZE * visual_scale)
+    for ax, tag in panels:
+        position = {"y": 0.94, "pad": 0} if ax in inside else {"pad": 3}
+        ax.set_title(tag, loc="left", fontproperties=font, **position)
+
+
+def label_every_decade(ax):
+    ax.yaxis.set_major_locator(LogLocator(base=10, subs=(1.0,), numticks=20))
+    ax.yaxis.set_major_formatter(FuncFormatter(plain_log_tick))
+    ax.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1,
+                                          numticks=100))
+    ax.yaxis.set_minor_formatter(NullFormatter())
 
 
 def setup_log_ax(ax, ylabel):
@@ -179,7 +197,7 @@ def setup_log_ax(ax, ylabel):
     ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
     ax.xaxis.set_minor_locator(NullLocator())
     ax.xaxis.set_minor_formatter(NullFormatter())
-    ax.yaxis.set_major_formatter(FuncFormatter(plain_log_tick))
+    label_every_decade(ax)
     ax.set_xlim(5, 88)
     ax.set_xlabel(r"Linear system size $L$")
     ax.set_ylabel(ylabel)
@@ -193,7 +211,7 @@ def setup_benchmark_log_ax(ax, ylabel):
     ax.set_xticklabels([str(L) for L in L_TICKS])
     ax.xaxis.set_minor_locator(NullLocator())
     ax.xaxis.set_minor_formatter(NullFormatter())
-    ax.yaxis.set_major_formatter(FuncFormatter(plain_log_tick))
+    label_every_decade(ax)
     ax.set_xlim(4, 74)
     ax.set_xlabel(r"Linear system size $L$")
     ax.set_ylabel(ylabel)
@@ -209,15 +227,18 @@ def fast_cost_note(L, seconds):
 
 
 # ------------------------------------------- mirrored absolute-time panel ----
-def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False):
+def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False,
+                    visual_scale=1.0):
     """Absolute times of all five implementations + inset speedup over fast."""
     for algo in ALGOS:
         meas, extra = series(data, algo, field)
         last = None
         if len(meas[0]):
-            draw_measured(ax, *meas, ALGO_COLOR[algo], ALGO_MARKER[algo], "-")
+            draw_measured(ax, *meas, ALGO_COLOR[algo], ALGO_MARKER[algo], "-",
+                          visual_scale=visual_scale)
             last = meas[:, -1]
-        draw_extrapolated(ax, last, extra, ALGO_COLOR[algo], ALGO_MARKER[algo])
+        draw_extrapolated(ax, last, extra, ALGO_COLOR[algo], ALGO_MARKER[algo],
+                          visual_scale=visual_scale)
     setup_benchmark_log_ax(ax, ylabel)
     ax.set_ylim(ylim)
 
@@ -234,32 +255,34 @@ def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False):
     for algo, (measured, estimated) in speedup_over_fast(data, field).items():
         if measured.shape[1]:
             axins.plot(measured[0], measured[1], "-" + ALGO_MARKER[algo],
-                       color=ALGO_COLOR[algo], lw=INSET_LINE_WIDTH,
-                       ms=INSET_MARKER_SIZE)
+                       color=ALGO_COLOR[algo], lw=INSET_LINE_WIDTH * visual_scale,
+                       ms=INSET_MARKER_SIZE * visual_scale)
         if estimated.shape[1]:
             if measured.shape[1]:
                 axins.plot([measured[0, -1], estimated[0, 0]],
                            [measured[1, -1], estimated[1, 0]], ":",
-                           color=ALGO_COLOR[algo], lw=INSET_LINE_WIDTH)
+                           color=ALGO_COLOR[algo],
+                           lw=INSET_LINE_WIDTH * visual_scale)
             axins.plot(estimated[0], estimated[1], ":" + ALGO_MARKER[algo],
                        color=ALGO_COLOR[algo], mfc="none", mec=ALGO_COLOR[algo],
-                       mew=STYLE_SCALE, lw=INSET_LINE_WIDTH, ms=INSET_MARKER_SIZE)
+                       mew=STYLE_SCALE * visual_scale,
+                       lw=INSET_LINE_WIDTH * visual_scale,
+                       ms=INSET_MARKER_SIZE * visual_scale)
     axins.set_yscale("log")
     axins.set_ylim(0.8, 600)
     axins.set_yticks([1, 10, 100])
     axins.yaxis.set_major_formatter(ScalarFormatter())
     axins.set_xlim(4, 74)
     axins.set_xticks(L_TICKS[::2])
-    axins.set_xlabel(r"$L$", fontsize=INSET_FONT_SIZE)
-    axins.set_ylabel("Speedup", fontsize=INSET_FONT_SIZE)
-    axins.grid(True, alpha=0.3)
-    axins.tick_params(which="both", direction="in", top=True, right=True,
-                      labelsize=INSET_FONT_SIZE)
+    axins.set_xlabel(r"$L$", fontsize=INSET_FONT_SIZE * visual_scale)
+    axins.set_ylabel("Speedup", fontsize=INSET_FONT_SIZE * visual_scale)
+    style_axes(axins)
+    axins.tick_params(which="both", labelsize=INSET_FONT_SIZE * visual_scale)
 
     handles = [Line2D([], [], color=ALGO_COLOR[a], marker=ALGO_MARKER[a],
-                      mfc=ALGO_COLOR[a], ls="-", lw=LINE_WIDTH,
-                      ms=MARKER_SIZE, label=ALGO_LABEL[a]) for a in ALGOS]
-    ax.legend(handles=handles, fontsize=LEGEND_SIZE, loc="lower right")
+                      mfc=ALGO_COLOR[a], ls="-", lw=LINE_WIDTH * visual_scale,
+                      ms=MARKER_SIZE * visual_scale, label=ALGO_LABEL[a]) for a in ALGOS]
+    ax.legend(handles=handles, fontsize=LEGEND_SIZE * visual_scale, loc="lower right")
 
     if days_note:
         meas, _ = series(data, "fast", "sweep_seconds")
@@ -267,8 +290,10 @@ def panel_abs_times(fig, ax, data, field, ylabel, ylim, days_note=False):
         i = int(np.argmax(L))
         ax.annotate(fast_cost_note(int(L[i]), med[i]),
                     xy=(L[i] * 0.95, med[i] * 1.2), xytext=(43, 2.0e6),
-                    fontsize=15 * STYLE_SCALE, va="center", ha="left",
-                    arrowprops=dict(arrowstyle="-", lw=0.8 * STYLE_SCALE, color="0.35",
+                    fontsize=15 * STYLE_SCALE * visual_scale, va="center", ha="left",
+                    arrowprops=dict(arrowstyle="-",
+                                    lw=0.8 * STYLE_SCALE * visual_scale,
+                                    color="0.35",
                                     connectionstyle="arc3,rad=-0.1"), color="0.2")
 
 
@@ -287,19 +312,27 @@ def shared_ylim(data):
 
 def fig_benchmark_mirrored(data, out_path, orientation):
     ylim = shared_ylim(data)
+    visual_scale = 1.0 if orientation == "stacked" else WIDE_STYLE_SCALE
     if orientation == "stacked":
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(COLUMN_WIDTH, 12 * STYLE_SCALE))
-        fig.subplots_adjust(hspace=0.42)
+        context = {}
+        figsize = (COLUMN_WIDTH, 12 * STYLE_SCALE)
     else:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6.9, 6 * STYLE_SCALE))
-        fig.subplots_adjust(wspace=0.30)
-    panel_abs_times(fig, ax1, data, "update_seconds", "Update time per sweep (s)", ylim)
-    panel_abs_times(fig, ax2, data, "sweep_seconds", "Total sweep time (s)", ylim,
-                    days_note=True)
-    for ax, tag in ((ax1, "(a)"), (ax2, "(b)")):
-        ax.set_title(tag, loc="left", fontsize=FONT_SIZE, fontweight="normal", pad=3)
-    fig.savefig(out_path)
-    plt.close(fig)
+        context = {"font.size": FONT_SIZE * visual_scale}
+        figsize = (6.9, 6 * STYLE_SCALE)
+    with plt.rc_context(context):
+        if orientation == "stacked":
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)
+            fig.subplots_adjust(hspace=0.42)
+        else:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+            fig.subplots_adjust(wspace=0.30)
+        panel_abs_times(fig, ax1, data, "update_seconds", "Update time per sweep (s)",
+                        ylim, visual_scale=visual_scale)
+        panel_abs_times(fig, ax2, data, "sweep_seconds", "Total sweep time (s)", ylim,
+                        days_note=True, visual_scale=visual_scale)
+        label_panels(((ax1, "(a)"), (ax2, "(b)")), visual_scale)
+        fig.savefig(out_path)
+        plt.close(fig)
     print("wrote", out_path)
 
 
@@ -341,7 +374,6 @@ def draw_stage_shares(ax, data, sizes=(24, 36, 54, 60)):
     ax.set_xlim(0, 100)
     ax.set_xticks([0, 25, 50, 75, 100])
     ax.set_xlabel("Share of total sweep time (%)")
-    ax.tick_params(axis="y", length=0)
     ax.set_axisbelow(True)
     style_axes(ax)
     handles = [plt.Rectangle((0, 0), 1, 1, fc=STAGE_COLOR[s], ec="white",
@@ -349,7 +381,7 @@ def draw_stage_shares(ax, data, sizes=(24, 36, 54, 60)):
                              label=STAGE_LABEL[s]) for s in STAGE_ORDER]
     ax.legend(handles=handles, loc="lower left", bbox_to_anchor=(-0.02, 1.16),
               ncol=3, columnspacing=0.8, handletextpad=0.35,
-              borderaxespad=0.0, fontsize=13 * STYLE_SCALE)
+              borderaxespad=0.0, fontsize=LEGEND_SIZE)
 
 
 # ------------------------------------------------- argument figure (sharp) ----
@@ -387,7 +419,8 @@ def fig_sharp(data, out_path):
                lw=LINE_WIDTH, ms=MARKER_SIZE,
                label=rf"Update time ({r_update[-1]:.0f}× at $L$={int(L[-1])})"),
     ]
-    ax1.legend(handles=handles, loc="upper left", fontsize=14 * STYLE_SCALE,
+    ax1.legend(handles=handles, loc="lower right", bbox_to_anchor=(1.0, 1.02),
+               fontsize=LEGEND_SIZE,
                handletextpad=0.4, borderaxespad=0.2, labelspacing=0.3)
     print(f"endpoint speedups at L={int(L[-1])}: update {r_update[-1]:.2f}x, "
           f"sweep {r_sweep[-1]:.2f}x")
@@ -395,8 +428,7 @@ def fig_sharp(data, out_path):
     # (b) stage-time shares
     draw_stage_shares(ax2, data)
 
-    for ax, tag in ((ax1, "(a)"), (ax2, "(b)")):
-        ax.set_title(tag, loc="left", fontsize=FONT_SIZE, fontweight="normal", pad=3)
+    label_panels(((ax1, "(a)"), (ax2, "(b)")), inside=(ax1,))
     fig.savefig(out_path)
     plt.close(fig)
     print("wrote", out_path)
@@ -431,7 +463,7 @@ def fig_delayt_comparison(data, out_path):
         Line2D([], [], color="0.35", marker="o", mfc="none", ms=MARKER_SIZE,
                lw=LINE_WIDTH, ls="--", label="Update time"),
     ]
-    ax1.legend(handles=handles, loc="upper left", fontsize=14 * STYLE_SCALE,
+    ax1.legend(handles=handles, loc="upper left", fontsize=LEGEND_SIZE,
                handletextpad=0.4, borderaxespad=0.2, labelspacing=0.25)
 
     # (b) direct ratio, delay-T over submatrix-T, at both accounting levels
@@ -450,7 +482,7 @@ def fig_delayt_comparison(data, out_path):
                  fontsize=14 * STYLE_SCALE,
                  color="0.4", va="top", ha="center")
     ax2.set_xscale("log")
-    ax2.set_xticks([6, 12, 24, 36, 48, 60, 72])
+    ax2.set_xticks([6, 12, 24, 36, 48, 72])
     ax2.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
     ax2.xaxis.set_minor_locator(NullLocator())
     ax2.xaxis.set_minor_formatter(NullFormatter())
@@ -460,11 +492,10 @@ def fig_delayt_comparison(data, out_path):
     ax2.set_ylim(0.8, 1.8)
     ax2.set_yticks([0.8, 1.0, 1.2, 1.4, 1.6])
     style_axes(ax2)
-    ax2.legend(loc="upper left", handletextpad=0.4,
-               borderaxespad=0.2, labelspacing=0.3, fontsize=14 * STYLE_SCALE)
+    ax2.legend(loc="lower right", bbox_to_anchor=(1.0, 1.02), handletextpad=0.4,
+               borderaxespad=0.2, labelspacing=0.3, fontsize=LEGEND_SIZE)
 
-    for ax, tag in ((ax1, "(a)"), (ax2, "(b)")):
-        ax.set_title(tag, loc="left", fontsize=FONT_SIZE, fontweight="normal", pad=3)
+    label_panels(((ax1, "(a)"), (ax2, "(b)")), inside=(ax2,))
     fig.savefig(out_path)
     plt.close(fig)
     print("wrote", out_path)
