@@ -16,6 +16,6 @@ This repository hosts the generated HTML, normalized public data, and report/fig
 
 `paper_figures/` contains the script that renders the static paper figures from `data/report_data.json`, the same normalized payload embedded in `index.html`.
 
-The stacked and wide layouts use Arial sans-serif, inward ticks on all sides, data-aligned logarithmic ticks, light grids, and untitled speedup insets; total-sweep curves are solid and filled, update-time curves are dashed and open, and non-measured points remain open with dotted extensions.
+All four figures follow the legacy benchmark style: Arial regular text, inward ticks on all sides, light grids, and the same algorithm colors and markers; the stacked and wide time panels use solid filled measured points, while non-measured points remain open with dotted extensions.
 
 Dependencies: `paper_figures/requirements-benchmark-figures.txt`.
