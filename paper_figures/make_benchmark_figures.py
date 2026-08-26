@@ -68,7 +68,7 @@ WIDE_STYLE_SCALE = 0.9
 # Inset 2: flatter, raised, so $L$ / tick labels stay inside the host axes.
 INSET_BOUNDS = (0.10, 0.49, 0.36, 0.40)
 INSET_BACKDROP_PAD = (0.13, 0.10, 0.01, 0.01)
-INSET2_BOUNDS = (0.60, 0.12, 0.36, 0.22)
+INSET2_BOUNDS = (0.60, 0.10, 0.36, 0.28)
 INSET2_BACKDROP_PAD = (0.055, 0.045, 0.005, 0.005)
 INSET1_MARKER_SCALE = 0.82
 INSET2_MARKER_SCALE = 0.62
@@ -307,8 +307,8 @@ def finish_inset_axes(axins, ylim, yticks, font, xscale="linear", yscale="linear
                     labelpad=1, tickpad=1):
     """Style an inset; no y-label — title is placed above the box separately.
 
-    Inset 1 keeps a log y-axis (speedup spans ~1–600); inset 2 is lin-lin
-    (ratios ~1–3.5). Both use a linear L axis so the box reads less compressed.
+    Inset 1 is log-log (speedup spans ~1–600; L also log). Inset 2 is lin-lin
+    (ratios ~1–3.5).
     """
     axins.set_xscale(xscale)
     axins.set_yscale(yscale)
@@ -361,7 +361,7 @@ def draw_inset_vs_fast(fig, ax, data, field, visual_scale=1.0):
                        ms=INSET_MARKER_SIZE * visual_scale * INSET1_MARKER_SCALE)
     font = INSET_FONT_SIZE * visual_scale
     finish_inset_axes(axins, (0.8, 600), [1, 10, 100], font,
-                      xscale="linear", yscale="log")
+                      xscale="log", yscale="log")
     place_inset_title(fig, axins, INSET1_TITLE, font)
 
 
@@ -603,7 +603,7 @@ def fig_benchmark_mirrored(data, out_path, orientation):
     bands = data["omp_bands"]
     if orientation == "stacked":
         context = {}
-        figsize = (COLUMN_WIDTH, 12.2 * STYLE_SCALE)
+        figsize = (COLUMN_WIDTH, 12.81 * STYLE_SCALE)
     else:
         context = {"font.size": FONT_SIZE * visual_scale}
         figsize = (6.9, 6.4 * STYLE_SCALE)
@@ -629,7 +629,7 @@ def fig_benchmark_mirrored(data, out_path, orientation):
             # Two-row legend above (a): center on the full figure (incl. y-label
             # column), not just the axes rectangle — otherwise it reads right-heavy.
             place_benchmark_legend(fig, visual_scale, 0.50,
-                                   row1_y=STACKED_TOP + 0.055,
+                                   row1_y=STACKED_TOP + 0.036,
                                    row2_y=STACKED_TOP + 0.012)
             fig.savefig(out_path, bbox_inches="tight", pad_inches=0.08)
         else:
@@ -739,7 +739,7 @@ def fig_reply_composite(data, out_path):
     ylim = shared_ylim(data)
     vs = 1.0
     fig_w = 2.12 * COLUMN_WIDTH
-    fig_h = 12.2 * STYLE_SCALE
+    fig_h = 12.81 * STYLE_SCALE
     fig = plt.figure(figsize=(fig_w, fig_h))
     outer = fig.add_gridspec(
         1, 2, width_ratios=[1.08, 1.0], wspace=0.20,
@@ -769,8 +769,8 @@ def fig_reply_composite(data, out_path):
         pos_a = ax_a.get_position()
         pos_b = ax_b.get_position()
         cx = 0.5 * (pos_a.x0 + pos_a.x1)
-        row1_y = min(0.965, pos_a.y1 + 0.048)
-        row2_y = min(0.935, pos_a.y1 + 0.018)
+        row1_y = min(0.965, pos_a.y1 + 0.034)
+        row2_y = min(0.935, pos_a.y1 + 0.012)
         place_benchmark_legend(fig, vs, cx, row1_y=row1_y, row2_y=row2_y)
 
         # Shrink (c) so (d) and the legend gap get more room; (c) x-label must
