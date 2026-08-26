@@ -11,12 +11,7 @@ Reads the normalized DATA JSON of the interactive report and produces:
         are annotated only in the mid-gap strip between (a) and (b).
   2. FigR-production-benchmark-wide.pdf -- reply composite: stacked production
         benchmark (a,b) beside speedup and stage-share panels (c,d).
-  3. FigR-speedup-stage-shares.pdf      -- argument figure (response letter):
-        (a) speedup of the submatrix-T update over the fast update vs L, at the
-            update-time and the total-sweep-time accounting levels;
-        (b) stage-time shares of one production sweep for the fast update and the
-            submatrix-T update at representative sizes.
-  4. FigR-delayT-comparison.pdf         -- direct comparison figure (response letter):
+  3. FigR-delayT-comparison.pdf         -- direct comparison figure (response letter):
         (a) update and total-sweep times of the delay-T and submatrix-T updates vs L;
         (b) direct time ratio, delay-T over submatrix-T, at both accounting levels.
 
@@ -24,7 +19,7 @@ Points with kind != "measured" (extrapolated/estimated) are drawn with open mark
 dotted extension from the last measured point, and are reported in the log.
 
 Usage:
-  make_benchmark_figures.py <report-data.json> <out-stacked.pdf> <out-wide.pdf> <out-sharp.pdf> <out-delayt.pdf>
+  make_benchmark_figures.py <report-data.json> <out-stacked.pdf> <out-composite.pdf> <out-delayt.pdf>
 """
 import json
 import sys
@@ -731,56 +726,6 @@ def draw_stage_shares(ax, data, sizes=(18, 24, 48, 60),
     return handles
 
 
-# ------------------------------------------------- argument figure (sharp) ----
-def fig_sharp(data, out_path):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=REPLY_FIGSIZE,
-                                   gridspec_kw={"width_ratios": [1, 1.15]})
-    fig.subplots_adjust(wspace=0.30)
-
-    # (a) speedup of submatrix-T over fast at both accounting levels
-    fast_s = measured_medians(data, "fast", "sweep_seconds")
-    fast_u = measured_medians(data, "fast", "update_seconds")
-    sub_s = measured_medians(data, "sublr", "sweep_seconds")
-    sub_u = measured_medians(data, "sublr", "update_seconds")
-    common = sorted(set(fast_s) & set(sub_s) & set(fast_u) & set(sub_u))
-    L = np.array(common, dtype=float)
-    r_sweep = np.array([fast_s[l] / sub_s[l] for l in common])
-    r_update = np.array([fast_u[l] / sub_u[l] for l in common])
-    marker = ALGO_MARKER["sublr"]
-    ax1.plot(L, r_sweep, "-" + marker, color=ALGO_COLOR["sublr"],
-             ms=MARKER_SIZE, lw=LINE_WIDTH, zorder=3)
-    ax1.plot(L, r_update, "--" + marker, color=ALGO_COLOR["sublr"], mfc="none",
-             mec=ALGO_COLOR["sublr"], mew=STYLE_SCALE, ms=MARKER_SIZE,
-             lw=LINE_WIDTH, zorder=3)
-    setup_log_ax(ax1, "Speedup over fast update")
-    ax1.set_xlim(5, 115)
-    ax1.set_xticks([6, 12, 24, 48, 96])
-    ax1.set_yticks([1, 3, 10, 30, 100, 300])
-    ax1.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    ax1.set_ylim(1, 400)
-    handles = [
-        Line2D([], [], color=ALGO_COLOR["sublr"], marker=marker, ls="-",
-               lw=LINE_WIDTH, ms=MARKER_SIZE,
-               label=rf"Total sweep time ({r_sweep[-1]:.1f}× at $L$={int(L[-1])})"),
-        Line2D([], [], color=ALGO_COLOR["sublr"], marker=marker, mfc="none", ls="--",
-               lw=LINE_WIDTH, ms=MARKER_SIZE,
-               label=rf"Update time ({r_update[-1]:.0f}× at $L$={int(L[-1])})"),
-    ]
-    ax1.legend(handles=handles, loc="lower right", bbox_to_anchor=(1.0, 1.10),
-               fontsize=LEGEND_SIZE,
-               handletextpad=0.4, borderaxespad=0.2, labelspacing=0.3)
-    print(f"endpoint speedups at L={int(L[-1])}: update {r_update[-1]:.2f}x, "
-          f"sweep {r_sweep[-1]:.2f}x")
-
-    # (b) stage-time shares
-    draw_stage_shares(ax2, data)
-
-    label_panels(((ax1, "(a)"), (ax2, "(b)")))
-    fig.savefig(out_path)
-    plt.close(fig)
-    print("wrote", out_path)
-
-
 # ---------------------------- reply composite (production + stages) ----
 def fig_reply_composite(data, out_path):
     """Double-column reply figure: stacked production benchmark | speedup+stages.
@@ -1025,7 +970,7 @@ def fig_delayt_comparison(data, out_path):
 
 # -------------------------------------------------------------- drivers ----
 def main():
-    data_path, out_stacked, out_wide, out_sharp, out_delayt = sys.argv[1:6]
+    data_path, out_stacked, out_composite, out_delayt = sys.argv[1:5]
     data = load_data(data_path)
     print("report generated_at:", data["generated_at"])
     kinds = {(p["algorithm"], p["L"], p.get("kind", "measured"))
@@ -1035,10 +980,8 @@ def main():
     else:
         print("all benchmark points are measured")
     fig_benchmark_mirrored(data, out_stacked, "stacked")
-    # Reply letter: composite (production stacked | speedup+stages) replaces the
-    # previous side-by-side production-only wide figure at out_wide.
-    fig_reply_composite(data, out_wide)
-    fig_sharp(data, out_sharp)
+    # Reply letter composite: production stacked | speedup+stages.
+    fig_reply_composite(data, out_composite)
     fig_delayt_comparison(data, out_delayt)
 
 
